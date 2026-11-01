@@ -25,7 +25,17 @@ export function App() {
     const saved = localStorage.getItem('fertiva_technical_references');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed: TechnicalReference[] = JSON.parse(saved);
+        const hasIac = parsed.some((r) => r.code === 'IAC_BOLETIM_208' || r.id === 'ref-iac-208');
+        if (!hasIac) {
+          const iacRef = TECHNICAL_REFERENCES_CATALOG.find((r) => r.code === 'IAC_BOLETIM_208');
+          if (iacRef) {
+            const updated = [iacRef, ...parsed];
+            localStorage.setItem('fertiva_technical_references', JSON.stringify(updated));
+            return updated;
+          }
+        }
+        return parsed;
       } catch {
         // fallback
       }

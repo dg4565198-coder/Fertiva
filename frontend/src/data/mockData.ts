@@ -254,5 +254,21 @@ export const TECHNICAL_REFERENCES_CATALOG: TechnicalReference[] = [
         gypsumFactor: 60
       }
     ]
+  },
+  {
+    id: 'ref-iac-208',
+    code: 'IAC_BOLETIM_208',
+    title: 'Boletim Técnico 208: Fertilizantes - Cálculo de Fórmulas Comerciais e Teores de Nutrientes',
+    author: 'P.E. Trani e A.L. Trani',
+    institution: 'Instituto Agronômico de Campinas (IAC / SAA-SP / MAPA)',
+    year: 2011,
+    status: 'Tabela Oficial Brasileira de Garantias e Solubilidade de Adubos',
+    scope: 'Nacional (Legislação MAPA / Trani & Carrijo)',
+    notes: 'Base canônica oficial para composição, teores de garantia de nutrientes (N, P2O5, K2O, Ca, Mg, S e Micronutrientes) e cálculo de misturas de adubos simples e formulados.',
+    officialUrl: 'https://www.iac.sp.gov.br/publicacoes',
+    institutionUrl: 'https://www.iac.sp.gov.br/',
+    docType: 'Boletim Técnico',
+    cropsCovered: ['Soja', 'Milho', 'Café', 'Café Conilon', 'Cacau', 'Feijão', 'Algodão', 'Cana-de-Açúcar', 'Pastagem', 'Citros', 'Banana', 'Mandioca', 'Tomate'],
+    hasAttachedFile: false
   }
 ];
