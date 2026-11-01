@@ -3,6 +3,7 @@ import { TechnicalReference, CropAgronomicRule } from '../types';
 import { extractTextFromPdf, parseBookManualReport, ExtractedBookData } from '../lib/pdfExtractor';
 import { getCropAgronomicRule } from '../lib/agronomicEngine';
 import { createWorker } from 'tesseract.js';
+import { saveBookBlob, getOrLoadBookUrl, deleteBookBlob } from '../lib/bookStorage';
 import {
   BookOpen,
   CheckCircle2,
@@ -30,7 +31,8 @@ import {
   Database,
   AlertCircle,
   Filter,
-  BarChart3
+  BarChart3,
+  Download
 } from 'lucide-react';
 
 interface LibraryViewProps {
@@ -61,11 +63,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   // Estado de Anexo e Leitura Automática de Livro/Manual
   const [isProcessingDoc, setIsProcessingDoc] = useState(false);
   const [docProgressText, setDocProgressText] = useState('Lendo documento...');
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
   const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null);
   const [attachedFileType, setAttachedFileType] = useState<'image' | 'pdf' | null>(null);
   const [showPreviewDoc, setShowPreviewDoc] = useState(false);
   const [autoFillSuccess, setAutoFillSuccess] = useState(false);
+
+  // Estado do Visualizador Integrado de PDF / Livro Técnico
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [viewingRef, setViewingRef] = useState<TechnicalReference | null>(null);
+  const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
+  const [viewingDocName, setViewingDocName] = useState<string>('');
+  const [viewingDocType, setViewingDocType] = useState<'pdf' | 'image'>('pdf');
+  const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+  const [justAddedRef, setJustAddedRef] = useState<TechnicalReference | null>(null);
 
   // Formulário do Novo Livro
   const [newTitle, setNewTitle] = useState('');
@@ -235,6 +247,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     setCustomP('80');
     setCustomK('90');
     setCustomFormulation('04-14-08');
+    setAttachedFile(null);
     setAttachedFileName(null);
     setAttachedPreviewUrl(null);
     setAttachedFileType(null);
@@ -265,6 +278,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setAttachedFile(file);
     setAttachedFileName(file.name);
     setIsProcessingDoc(true);
     setDocProgressText('Identificando formato do documento...');
@@ -316,7 +330,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
-  const handleSaveNewBook = (e: React.FormEvent) => {
+  const handleSaveNewBook = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!newTitle.trim()) {
@@ -340,8 +354,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       gypsumFactor: 50
     }));
 
+    const newId = `ref-${Date.now()}`;
+    const hasAttached = !!attachedFile || !!attachedPreviewUrl;
+
+    if (attachedFile) {
+      await saveBookBlob(
+        newId,
+        attachedFile,
+        attachedFileName || attachedFile.name,
+        attachedFileType || 'pdf'
+      );
+    }
+
     const newRef: TechnicalReference = {
-      id: `ref-${Date.now()}`,
+      id: newId,
       code: codeGen,
       title: newTitle.trim(),
       institution: newInstitution.trim() || 'Órgão de Pesquisa Agropecuária',
@@ -349,17 +375,62 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       status: 'Adicionado pelo Operador - Ativo',
       scope: newScope.trim() || 'Brasil',
       notes: newNotes.trim() || `Base de calagem e nutrição cadastrada no sistema. Culturas contempladas: ${cleanCrops.join(', ')}.`,
-      officialUrl: newUrl.trim() || 'https://www.gov.br/agricultura',
-      institutionUrl: newUrl.trim() || 'https://www.gov.br/agricultura',
+      officialUrl: newUrl.trim() || '',
+      institutionUrl: newUrl.trim() || '',
       docType: newDocType,
       cropsCovered: cleanCrops,
       cropRules,
-      isCustom: true
+      isCustom: true,
+      hasAttachedFile: hasAttached,
+      fileName: attachedFileName || (attachedFile ? attachedFile.name : undefined),
+      fileType: attachedFileType || 'pdf',
+      fileDataUrl: attachedPreviewUrl || undefined
     };
 
     onAddReference(newRef);
     setIsAddModalOpen(false);
+    setJustAddedRef(newRef);
     resetModalForm();
+  };
+
+  const handleOpenPdf = async (ref: TechnicalReference) => {
+    setIsLoadingDoc(true);
+    setViewingRef(ref);
+    setViewingDocName(ref.fileName || `${ref.title}.pdf`);
+    setViewingDocType(ref.fileType || 'pdf');
+    setIsViewerOpen(true);
+
+    try {
+      const entry = await getOrLoadBookUrl(ref.id);
+      if (entry) {
+        setViewingDocUrl(entry.url);
+        setViewingDocName(entry.fileName);
+        setViewingDocType(entry.fileType);
+      } else if (ref.fileDataUrl) {
+        setViewingDocUrl(ref.fileDataUrl);
+      } else {
+        setViewingDocUrl(null);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar arquivo de livro:', err);
+      if (ref.fileDataUrl) {
+        setViewingDocUrl(ref.fileDataUrl);
+      } else {
+        setViewingDocUrl(null);
+      }
+    } finally {
+      setIsLoadingDoc(false);
+    }
+  };
+
+  const handleOpenInAcervo = (cropName?: string) => {
+    setActiveSection('acervo');
+    setAcervoFilter('all');
+    if (cropName) {
+      setAcervoSearch(cropName);
+    }
+    setIsViewerOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -405,6 +476,68 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Banner de Feedback Imediato: Livro Adicionado com Sucesso */}
+      {justAddedRef && (
+        <div className="bg-gradient-to-r from-emerald-950 via-[#173F2B] to-[#2F7D32] text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-emerald-400/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-in fade-in duration-300 ring-2 ring-emerald-500/30">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-11 h-11 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20">
+              <CheckCircle2 className="w-6 h-6 text-[#8BC34A]" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-white">
+                  Manual Oficial Adicionado & Ativo no Motor!
+                </h4>
+                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-900/90 text-[#8BC34A] border border-emerald-600/70">
+                  {justAddedRef.code}
+                </span>
+                <span className="text-[11px] text-emerald-200">
+                  • {justAddedRef.cropsCovered?.join(', ')}
+                </span>
+              </div>
+              <p className="text-xs text-gray-200 mt-0.5">
+                O arquivo foi gravado no sistema e as regras de saturação por bases e NPK já estão ativas. O que deseja fazer agora?
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full md:w-auto justify-end">
+            {(justAddedRef.hasAttachedFile || justAddedRef.fileDataUrl || justAddedRef.isCustom) && (
+              <button
+                onClick={() => handleOpenPdf(justAddedRef)}
+                className="px-4 py-2.5 rounded-xl text-xs font-black bg-white text-[#173F2B] hover:bg-emerald-50 transition-all shadow-md flex items-center space-x-2 cursor-pointer"
+                title="Abrir e ler o PDF adicionado"
+              >
+                <FileText className="w-4 h-4 text-[#2F7D32]" />
+                <span>Acessar o PDF</span>
+              </button>
+            )}
+
+            {justAddedRef.cropsCovered && justAddedRef.cropsCovered.length > 0 && (
+              <button
+                onClick={() => {
+                  handleOpenInAcervo(justAddedRef.cropsCovered[0]);
+                  setJustAddedRef(null);
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-amber-950 transition-all shadow-md flex items-center space-x-2 cursor-pointer"
+                title={`Ir diretamente para o Acervo de ${justAddedRef.cropsCovered[0]}`}
+              >
+                <Database className="w-4 h-4" />
+                <span>Abrir no Acervo: {justAddedRef.cropsCovered[0]}</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => setJustAddedRef(null)}
+              className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              title="Dispensar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Abas de Navegação Superior: Catálogo vs. Acervo */}
       <div className="flex border-b border-gray-200 space-x-3">
@@ -632,26 +765,49 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </p>
             </div>
 
-            {/* Rodapé do Card com Status e Botões de Link Externo */}
+            {/* Rodapé do Card com Status e Botões de Acesso */}
             <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-1.5 text-[11px] text-emerald-800 font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span>{ref.status}</span>
               </div>
 
-              {/* LINK OFICIAL EXTERNO */}
-              {ref.officialUrl && (
-                <a
-                  href={ref.officialUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-xs shrink-0 group/link"
-                  title={`Acessar publicação oficial em ${ref.officialUrl}`}
-                >
-                  <span>Acessar Publicação Oficial</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-[#8BC34A] group-hover/link:translate-x-0.5 transition-transform" />
-                </a>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Botão ABRIR NO ACERVO DA CULTURA */}
+                {ref.cropsCovered && ref.cropsCovered.length > 0 && (
+                  <button
+                    onClick={() => handleOpenInAcervo(ref.cropsCovered[0])}
+                    className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition-all shadow-2xs cursor-pointer"
+                    title={`Abrir e auditar ${ref.cropsCovered[0]} diretamente no Acervo`}
+                  >
+                    <Database className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Abrir no Acervo</span>
+                  </button>
+                )}
+
+                {/* Se tem PDF anexado ou foi adicionado pelo usuário: BOTÃO ACESSAR PDF DIRETO */}
+                {ref.hasAttachedFile || ref.fileDataUrl || ref.isCustom ? (
+                  <button
+                    onClick={() => handleOpenPdf(ref)}
+                    className="inline-flex items-center justify-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-xs shrink-0 cursor-pointer"
+                    title={`Abrir e visualizar o PDF de ${ref.title}`}
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#8BC34A]" />
+                    <span>Acessar o PDF</span>
+                  </button>
+                ) : ref.officialUrl ? (
+                  <a
+                    href={ref.officialUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all shadow-2xs shrink-0 group/link"
+                    title={`Acessar publicação oficial em ${ref.officialUrl}`}
+                  >
+                    <span>Publicação Oficial</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-gray-500 group-hover/link:translate-x-0.5 transition-transform" />
+                  </a>
+                ) : null}
+              </div>
             </div>
           </div>
         ))}
@@ -848,14 +1004,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {item.matchingRefs.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {item.matchingRefs.map((r) => (
-                          <span
+                          <div
                             key={r.id}
-                            className="text-[11px] font-semibold bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-lg text-gray-800 flex items-center space-x-1"
+                            className="text-[11px] font-semibold bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-lg text-gray-800 flex items-center space-x-2"
                             title={`${r.title} (${r.institution}, ${r.year})`}
                           >
                             <BookOpen className="w-3 h-3 text-[#2F7D32]" />
                             <span><strong>{r.code}</strong> ({r.year})</span>
-                          </span>
+                            {(r.hasAttachedFile || r.fileDataUrl || r.isCustom) && (
+                              <button
+                                onClick={() => handleOpenPdf(r)}
+                                className="ml-1 px-1.5 py-0.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[10px] flex items-center space-x-1 cursor-pointer transition-colors"
+                                title="Abrir e ler o PDF desta obra diretamente"
+                              >
+                                <FileText className="w-2.5 h-2.5 text-[#2F7D32]" />
+                                <span>Acessar PDF</span>
+                              </button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -915,7 +1081,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   </div>
                 </div>
 
-                {/* Rodapé da Cultura no Acervo com Ação de Anexar */}
+                {/* Rodapé da Cultura no Acervo com Ação de Anexar e Acessar PDF */}
                 <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
                   <button
                     onClick={() => handleOpenAddForCrop(item.cropName)}
@@ -925,17 +1091,34 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <span>+ Anexar Manual / Livro para {item.cropName}</span>
                   </button>
 
-                  {item.matchingRefs.length > 0 && (
-                    <button
-                      onClick={() => {
-                        setSelectedFilter(item.cropName);
-                        setActiveSection('catalog');
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 hover:bg-emerald-50 border border-emerald-200 cursor-pointer"
-                    >
-                      Ver Obras no Catálogo ({item.matchingRefs.length})
-                    </button>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    {/* Botão de Acesso Rápido ao PDF se houver exemplar anexado */}
+                    {item.matchingRefs.some((r) => r.hasAttachedFile || r.fileDataUrl || r.isCustom) && (
+                      <button
+                        onClick={() => {
+                          const target = item.matchingRefs.find((r) => r.hasAttachedFile || r.fileDataUrl || r.isCustom);
+                          if (target) handleOpenPdf(target);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-xs flex items-center space-x-1 cursor-pointer"
+                        title="Acessar o PDF do livro que alimenta esta cultura"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-[#8BC34A]" />
+                        <span>Acessar PDF</span>
+                      </button>
+                    )}
+
+                    {item.matchingRefs.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setSelectedFilter(item.cropName);
+                          setActiveSection('catalog');
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 hover:bg-emerald-50 border border-emerald-200 cursor-pointer"
+                      >
+                        Ver no Catálogo ({item.matchingRefs.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -1325,6 +1508,142 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
       )}
 
+      {/* MODAL: VISUALIZADOR INTEGRADO DE PDF / LIVRO TÉCNICO */}
+      {isViewerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+            {/* Topo do Visualizador */}
+            <div className="p-4 sm:px-6 bg-[#173F2B] text-white flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center space-x-3 overflow-hidden">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 border border-white/20">
+                  <FileText className="w-5 h-5 text-[#8BC34A]" />
+                </div>
+                <div className="truncate">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-900/80 text-[#8BC34A] border border-emerald-700/60">
+                      {viewingRef?.code || 'PDF'}
+                    </span>
+                    <span className="text-[11px] text-emerald-200 font-medium truncate max-w-[200px] sm:max-w-xs">
+                      {viewingDocName}
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white truncate max-w-xl">
+                    {viewingRef?.title || viewingDocName}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Ações do Topo */}
+              <div className="flex items-center space-x-2 shrink-0">
+                {viewingRef?.cropsCovered && viewingRef.cropsCovered.length > 0 && (
+                  <button
+                    onClick={() => handleOpenInAcervo(viewingRef.cropsCovered[0])}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-amber-950 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                    title={`Abrir acervo de ${viewingRef.cropsCovered[0]}`}
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Abrir no Acervo:</span>
+                    <span>{viewingRef.cropsCovered[0]}</span>
+                  </button>
+                )}
+
+                {viewingDocUrl && (
+                  <>
+                    <a
+                      href={viewingDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      title="Abrir em Nova Aba do Navegador"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+
+                    <a
+                      href={viewingDocUrl}
+                      download={viewingDocName || 'manual-tecnico.pdf'}
+                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                      title="Baixar Arquivo PDF"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
+                  </>
+                )}
+
+                <button
+                  onClick={() => setIsViewerOpen(false)}
+                  className="p-2 rounded-lg bg-white/10 hover:bg-red-500 text-white transition-colors cursor-pointer ml-1"
+                  title="Fechar Visualizador"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Corpo do Visualizador com o Documento Renderizado */}
+            <div className="flex-1 bg-gray-100 p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center">
+              {isLoadingDoc ? (
+                <div className="flex flex-col items-center space-y-3">
+                  <RefreshCw className="w-8 h-8 text-[#2F7D32] animate-spin" />
+                  <p className="text-sm font-bold text-gray-700">Carregando exemplar do acervo...</p>
+                </div>
+              ) : viewingDocUrl ? (
+                viewingDocType === 'pdf' ? (
+                  <iframe
+                    src={viewingDocUrl}
+                    className="w-full h-full rounded-xl border border-gray-300 bg-white shadow-inner"
+                    title={viewingDocName || 'Visualizador de PDF FERTIVA'}
+                  />
+                ) : (
+                  <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                    <img
+                      src={viewingDocUrl}
+                      alt="Visualização do Documento"
+                      className="max-h-full max-w-full object-contain rounded-lg shadow-lg border border-gray-200"
+                    />
+                  </div>
+                )
+              ) : (
+                <div className="text-center p-8 bg-white rounded-2xl border border-gray-200 max-w-md shadow-sm">
+                  <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                  <h4 className="text-sm font-bold text-gray-800">Arquivo PDF não localizado localmente</h4>
+                  <p className="text-xs text-gray-500 mt-1 mb-4">
+                    O PDF pode ter sido adicionado em outro dispositivo ou limpo da memória do navegador. Você pode anexá-lo novamente pelo botão de edição.
+                  </p>
+                  {viewingRef?.officialUrl && (
+                    <a
+                      href={viewingRef.officialUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32]"
+                    >
+                      <span>Acessar Publicação Oficial</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé Informativo */}
+            <div className="p-3 bg-white border-t border-gray-200 px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-2 shrink-0">
+              <div className="flex items-center space-x-2">
+                <BadgeCheck className="w-4 h-4 text-emerald-600" />
+                <span>
+                  Exemplar auditado e ativo na tomada de decisão do motor FERTIVA.
+                </span>
+              </div>
+              {viewingRef?.cropsCovered && (
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-semibold text-gray-700">Culturas Atendidas:</span>
+                  <span className="font-bold text-emerald-800">{viewingRef.cropsCovered.join(', ')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {refToDelete && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -1349,7 +1668,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
+                  await deleteBookBlob(refToDelete.id);
                   onRemoveReference(refToDelete.id);
                   setRefToDelete(null);
                 }}

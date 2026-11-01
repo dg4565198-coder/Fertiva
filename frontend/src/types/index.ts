@@ -105,6 +105,10 @@ export interface TechnicalReference {
   cropsCovered: string[];        // Lista de culturas atendidas pelo livro
   cropRules?: CropAgronomicRule[]; // Parâmetros agronômicos específicos por cultura
   isCustom?: boolean;            // Indicador se foi cadastrado pelo operador do sistema
+  hasAttachedFile?: boolean;     // Indica se possui PDF/imagem anexado pelo usuário
+  fileName?: string;             // Nome do arquivo PDF/imagem anexado
+  fileType?: 'pdf' | 'image';    // Formato do arquivo
+  fileDataUrl?: string;          // URL/Blob do arquivo para acesso direto
 }
 
 export interface DerivedIndices {
