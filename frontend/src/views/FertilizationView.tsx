@@ -59,6 +59,12 @@ export const CROP_SPACING_CONFIGS: Record<string, CropSpacingConfig> = {
     defaultMode: 'linear',
     description: 'População de ~68.000 a 72.000 plantas/ha no espaçamento de 0,50m.'
   },
+  'Café': {
+    rowSpacing: 3.00,
+    plantSpacing: 1.00,
+    defaultMode: 'planta',
+    description: 'Plantio adensado com ~3.333 plantas/ha para colheita semi-mecanizada.'
+  },
   'Café Conilon': {
     rowSpacing: 3.00,
     plantSpacing: 1.00,
@@ -100,6 +106,48 @@ export const CROP_SPACING_CONFIGS: Record<string, CropSpacingConfig> = {
     plantSpacing: 0.12,
     defaultMode: 'linear',
     description: 'Espaçamento estreito de 0,76m a 0,90m no Cerrado.'
+  },
+  'Citros': {
+    rowSpacing: 6.00,
+    plantSpacing: 4.00,
+    defaultMode: 'planta',
+    description: 'Pomar comercial (~416 plantas/ha).'
+  },
+  'Eucalipto': {
+    rowSpacing: 3.00,
+    plantSpacing: 2.00,
+    defaultMode: 'planta',
+    description: 'Plantio florestal 3x2m (~1.666 árvores/ha).'
+  },
+  'Pastagem': {
+    rowSpacing: 0.40,
+    plantSpacing: 0.10,
+    defaultMode: 'hectare',
+    description: 'Formação ou recuperação de pasto por hectare.'
+  },
+  'Pimenta-do-Reino': {
+    rowSpacing: 2.50,
+    plantSpacing: 2.00,
+    defaultMode: 'planta',
+    description: 'Cultivo em tutores (~2.000 plantas/ha).'
+  },
+  'Seringueira': {
+    rowSpacing: 7.00,
+    plantSpacing: 3.00,
+    defaultMode: 'planta',
+    description: 'Seringal de cultivo (~476 plantas/ha).'
+  },
+  'Frutíferas Tropicais': {
+    rowSpacing: 4.00,
+    plantSpacing: 3.00,
+    defaultMode: 'planta',
+    description: 'Pomar de fruticultura diversificada.'
+  },
+  'Tomate': {
+    rowSpacing: 1.00,
+    plantSpacing: 0.50,
+    defaultMode: 'planta',
+    description: 'Horticultura tutorada (~20.000 plantas/ha).'
   }
 };
 
@@ -116,6 +164,11 @@ const CROP_YIELD_TARGETS: Record<string, { label: string; key: string; multiplie
     { label: '130 sc/ha (Safra Verão / Bom Manejo)', key: '130_sc', multiplier: 1.0 },
     { label: '170 sc/ha (Alta Produtividade)', key: '170_sc', multiplier: 1.3 },
     { label: '210+ sc/ha (Irrigado Alta Densidade)', key: '210_sc', multiplier: 1.55 }
+  ],
+  'Café': [
+    { label: '40 sc beneficiadas/ha', key: '40_sc', multiplier: 0.8 },
+    { label: '70 sc beneficiadas/ha (Padrão Regional)', key: '70_sc', multiplier: 1.0 },
+    { label: '110+ sc beneficiadas/ha (Irrigado Alta Carga)', key: '110_sc', multiplier: 1.4 }
   ],
   'Café Conilon': [
     { label: '40 sc beneficiadas/ha', key: '40_sc', multiplier: 0.8 },
@@ -151,8 +204,119 @@ const CROP_YIELD_TARGETS: Record<string, { label: string; key: string; multiplie
     { label: '220 @/ha', key: '220_at', multiplier: 0.85 },
     { label: '300 @/ha (Cerrado Alta Tecnologia)', key: '300_at', multiplier: 1.15 },
     { label: '380+ @/ha (Irrigado)', key: '380_at', multiplier: 1.45 }
+  ],
+  'Citros': [
+    { label: '25 t/ha (Média Regional)', key: '25_ton', multiplier: 0.85 },
+    { label: '40 t/ha (Boa Gestão Pomar)', key: '40_ton', multiplier: 1.1 },
+    { label: '60+ t/ha (Alta Tecnologia / Irrigado)', key: '60_ton', multiplier: 1.4 }
+  ],
+  'Eucalipto': [
+    { label: '35 m³/ha/ano (Média Nacional)', key: '35_m3', multiplier: 0.9 },
+    { label: '45 m³/ha/ano (Boa Silvicultura)', key: '45_m3', multiplier: 1.1 },
+    { label: '55+ m³/ha/ano (Clone Alta Produtividade)', key: '55_m3', multiplier: 1.35 }
+  ],
+  'Pastagem': [
+    { label: '1.2 UA/ha (Média Extensiva)', key: '1_2_ua', multiplier: 0.85 },
+    { label: '2.5 UA/ha (Manejo Rotacionado)', key: '2_5_ua', multiplier: 1.1 },
+    { label: '4.0+ UA/ha (Adubada Intensiva)', key: '4_0_ua', multiplier: 1.4 }
+  ],
+  'Pimenta-do-Reino': [
+    { label: '3.0 t pimenta seca/ha', key: '3_ton', multiplier: 0.85 },
+    { label: '5.0 t pimenta seca/ha (Padrão)', key: '5_ton', multiplier: 1.1 },
+    { label: '7.5+ t pimenta seca/ha (Irrigada)', key: '7_5_ton', multiplier: 1.4 }
+  ],
+  'Seringueira': [
+    { label: '1.2 t borracha seca/ha', key: '1_2_ton', multiplier: 0.9 },
+    { label: '1.8 t borracha seca/ha', key: '1_8_ton', multiplier: 1.1 },
+    { label: '2.5+ t borracha seca/ha', key: '2_5_ton', multiplier: 1.35 }
+  ],
+  'Frutíferas Tropicais': [
+    { label: 'Produtividade Média Regional', key: 'med', multiplier: 1.0 },
+    { label: 'Alta Produtividade (+25% NPK)', key: 'alta', multiplier: 1.25 },
+    { label: 'Baixa Produtividade (-30% NPK)', key: 'baixa', multiplier: 0.7 }
+  ],
+  'Tomate': [
+    { label: '60 t/ha (Média)', key: '60_ton', multiplier: 0.85 },
+    { label: '90 t/ha (Comercial Tutorado)', key: '90_ton', multiplier: 1.1 },
+    { label: '120+ t/ha (Alta Tecnologia)', key: '120_ton', multiplier: 1.4 }
   ]
 };
+
+// Funções seguras de resolução de configuração agronômica
+export function getCropSpacingConfig(cropName: string): CropSpacingConfig {
+  if (!cropName) {
+    return { rowSpacing: 0.50, plantSpacing: 0.25, defaultMode: 'hectare', description: 'Padrão.' };
+  }
+  const exact = CROP_SPACING_CONFIGS[cropName];
+  if (exact) return exact;
+
+  const norm = cropName.toLowerCase().trim();
+  for (const [key, cfg] of Object.entries(CROP_SPACING_CONFIGS)) {
+    if (norm.includes(key.toLowerCase()) || key.toLowerCase().includes(norm)) {
+      return cfg;
+    }
+  }
+
+  // Fallbacks inteligentes por classe vegetal
+  if (norm.includes('caf') || norm.includes('cacau') || norm.includes('banana') || norm.includes('citros') || norm.includes('frut') || norm.includes('pimenta') || norm.includes('mandioca') || norm.includes('tomat')) {
+    return {
+      rowSpacing: 3.00,
+      plantSpacing: 1.50,
+      defaultMode: 'planta',
+      description: 'Espaçamento para cultura perene / hortifrúti.'
+    };
+  }
+
+  if (norm.includes('eucalipto') || norm.includes('pinus') || norm.includes('seringa') || norm.includes('florest')) {
+    return {
+      rowSpacing: 3.00,
+      plantSpacing: 2.00,
+      defaultMode: 'planta',
+      description: 'Espaçamento florestal.'
+    };
+  }
+
+  if (norm.includes('soja') || norm.includes('milho') || norm.includes('feij') || norm.includes('algod') || norm.includes('trigo') || norm.includes('arroz') || norm.includes('cana')) {
+    return {
+      rowSpacing: 0.50,
+      plantSpacing: 0.20,
+      defaultMode: 'linear',
+      description: 'Espaçamento em linhas de semeadura.'
+    };
+  }
+
+  return {
+    rowSpacing: 0.50,
+    plantSpacing: 0.25,
+    defaultMode: 'hectare',
+    description: 'Espaçamento padrão agronômico.'
+  };
+}
+
+export function getCropYieldOptions(cropName: string) {
+  if (!cropName) {
+    return [
+      { label: 'Produtividade Média Regional', key: 'med', multiplier: 1.0 },
+      { label: 'Alta Produtividade (+25% NPK)', key: 'alta', multiplier: 1.25 },
+      { label: 'Baixa Produtividade (-30% NPK)', key: 'baixa', multiplier: 0.7 }
+    ];
+  }
+  const exact = CROP_YIELD_TARGETS[cropName];
+  if (exact) return exact;
+
+  const norm = cropName.toLowerCase().trim();
+  for (const [key, opts] of Object.entries(CROP_YIELD_TARGETS)) {
+    if (norm.includes(key.toLowerCase()) || key.toLowerCase().includes(norm)) {
+      return opts;
+    }
+  }
+
+  return [
+    { label: 'Produtividade Média Regional', key: 'med', multiplier: 1.0 },
+    { label: 'Alta Produtividade (+25% NPK)', key: 'alta', multiplier: 1.25 },
+    { label: 'Baixa Produtividade (-30% NPK)', key: 'baixa', multiplier: 0.7 }
+  ];
+}
 
 export const FertilizationView: React.FC<FertilizationViewProps> = ({
   sample,
@@ -164,12 +328,7 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
   const initialCrop = plot?.currentCrop || availableCrops[0] || 'Milho';
   const [crop, setCrop] = useState<string>(initialCrop);
 
-  const initialSpacingConfig = CROP_SPACING_CONFIGS[initialCrop] || {
-    rowSpacing: 0.50,
-    plantSpacing: 0.28,
-    defaultMode: 'hectare' as const,
-    description: 'Espaçamento padrão.'
-  };
+  const initialSpacingConfig = getCropSpacingConfig(initialCrop);
 
   // Modo de Aplicação: 'hectare' | 'linear' | 'planta'
   const [applicationMode, setApplicationMode] = useState<'hectare' | 'linear' | 'planta'>(
@@ -185,48 +344,36 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
 
   // Metas de produtividade disponíveis para a cultura
   const yieldOptions = useMemo(() => {
-    return (
-      CROP_YIELD_TARGETS[crop] || [
-        { label: 'Produtividade Média Regional', key: 'med', multiplier: 1.0 },
-        { label: 'Alta Produtividade (+25% NPK)', key: 'alta', multiplier: 1.25 },
-        { label: 'Baixa Produtividade (-30% NPK)', key: 'baixa', multiplier: 0.7 }
-      ]
-    );
+    return getCropYieldOptions(crop);
   }, [crop]);
 
   const [selectedYieldKey, setSelectedYieldKey] = useState<string>(
     yieldOptions[1]?.key || yieldOptions[0]?.key || 'med'
   );
 
-  // Atualização sincronizada ao trocar de cultura
+  // Atualização sincronizada e segura ao trocar de cultura
   const handleCropChange = (newCrop: string) => {
     setCrop(newCrop);
-    const opts = CROP_YIELD_TARGETS[newCrop];
+    const opts = getCropYieldOptions(newCrop);
     if (opts && opts[1]) setSelectedYieldKey(opts[1].key);
     else if (opts && opts[0]) setSelectedYieldKey(opts[0].key);
+    else setSelectedYieldKey('med');
 
-    const cfg = CROP_SPACING_CONFIGS[newCrop];
-    if (cfg) {
-      setSpacingRow(cfg.rowSpacing);
-      setSpacingPlant(cfg.plantSpacing);
-      setApplicationMode(cfg.defaultMode);
-      if (cfg.defaultMode === 'planta') {
-        setSplitApplications(3);
-      }
+    const cfg = getCropSpacingConfig(newCrop);
+    setSpacingRow(cfg.rowSpacing);
+    setSpacingPlant(cfg.plantSpacing);
+    setApplicationMode(cfg.defaultMode);
+    if (cfg.defaultMode === 'planta') {
+      setSplitApplications(3);
     }
   };
 
   // Restaura o espaçamento padrão agronômico da cultura atual
   const handleResetCropSpacing = () => {
-    const cfg = CROP_SPACING_CONFIGS[crop];
-    if (cfg) {
-      setSpacingRow(cfg.rowSpacing);
-      setSpacingPlant(cfg.plantSpacing);
-      setApplicationMode(cfg.defaultMode);
-    } else {
-      setSpacingRow(0.50);
-      setSpacingPlant(0.25);
-    }
+    const cfg = getCropSpacingConfig(crop);
+    setSpacingRow(cfg.rowSpacing);
+    setSpacingPlant(cfg.plantSpacing);
+    setApplicationMode(cfg.defaultMode);
   };
 
   // Estratégia de Escolha dos Adubos (Formulados NPK vs Matérias-Primas Simples vs Personalizado)
@@ -645,7 +792,7 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
           </div>
           <div className="mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-600 flex justify-between">
             <span>Sulco de Plantio: 100%</span>
-            <span>Meta Produtividade: {currentYieldOption?.label.split('(')[0]}</span>
+            <span>Meta Produtividade: {currentYieldOption?.label ? currentYieldOption.label.split('(')[0] : 'Regional Padrão'}</span>
           </div>
         </div>
 
@@ -741,10 +888,16 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
                     <input
                       type="number"
                       step="0.05"
-                      min="0.20"
-                      max="10.0"
-                      value={spacingRow}
-                      onChange={(e) => setSpacingRow(Math.max(0.1, parseFloat(e.target.value) || 0.5))}
+                      min="0.10"
+                      max="15.0"
+                      value={spacingRow || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setSpacingRow(isNaN(val) ? 0 : val);
+                      }}
+                      onBlur={() => {
+                        if (!spacingRow || spacingRow <= 0) setSpacingRow(0.50);
+                      }}
                       className="w-24 text-xs font-bold px-3 py-2 rounded-xl border border-gray-300 bg-white text-gray-900 shadow-2xs focus:ring-2 focus:ring-[#2F7D32]/20"
                     />
                     <span className="absolute right-3 top-2 text-xs font-bold text-gray-400">m</span>
@@ -779,10 +932,16 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
                     <input
                       type="number"
                       step="0.02"
-                      min="0.05"
-                      max="10.0"
-                      value={spacingPlant}
-                      onChange={(e) => setSpacingPlant(Math.max(0.01, parseFloat(e.target.value) || 0.25))}
+                      min="0.02"
+                      max="15.0"
+                      value={spacingPlant || ''}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setSpacingPlant(isNaN(val) ? 0 : val);
+                      }}
+                      onBlur={() => {
+                        if (!spacingPlant || spacingPlant <= 0) setSpacingPlant(0.25);
+                      }}
                       className="w-24 text-xs font-bold px-3 py-2 rounded-xl border border-gray-300 bg-white text-gray-900 shadow-2xs focus:ring-2 focus:ring-[#2F7D32]/20"
                     />
                     <span className="absolute right-3 top-2 text-xs font-bold text-gray-400">m</span>
