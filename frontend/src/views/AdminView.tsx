@@ -16,7 +16,9 @@ import {
   Ban,
   Building,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Pencil,
+  X
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -26,6 +28,7 @@ interface AdminViewProps {
   plotsList: Plot[];
   samplesList: SoilSample[];
   onUpdateUserTier: (userId: string, newTier: SubscriptionTier) => void;
+  onUpdateUserProfile?: (userId: string, updatedData: Partial<UserAccount>) => void;
   onOpenLogin: () => void;
 }
 
@@ -36,6 +39,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   plotsList,
   samplesList,
   onUpdateUserTier,
+  onUpdateUserProfile,
   onOpenLogin
 }) => {
   const isGuilhermeAdmin =
@@ -46,6 +50,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'produtor' | 'profissional' | 'estudante'>('all');
   const [activeTab, setActiveTab] = useState<'users' | 'rules' | 'metrics'>('users');
+
+  // Estado para Edição dos Dados do Administrador
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editName, setEditName] = useState(currentUser.name);
+  const [editEmail, setEditEmail] = useState(currentUser.email);
+  const [editCity, setEditCity] = useState(currentUser.city || '');
+  const [editState, setEditState] = useState(currentUser.state || '');
 
   // Se NÃO for o Guilherme, exibe tela de bloqueio e segurança estrita
   if (!isGuilhermeAdmin) {
@@ -98,9 +109,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
               Painel Master de Controle
             </span>
           </div>
-          <h2 className="text-2xl font-black tracking-tight mt-1">
-            Olá, Guilherme! Controle Geral do Fertiva
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
+            <h2 className="text-2xl font-black tracking-tight">
+              Olá, {currentUser.name}! Controle Geral do Fertiva
+            </h2>
+            <button
+              onClick={() => {
+                setEditName(currentUser.name);
+                setEditEmail(currentUser.email);
+                setEditCity(currentUser.city || '');
+                setEditState(currentUser.state || '');
+                setIsEditProfileOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-[#173F2B] hover:bg-gray-100 transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer w-fit"
+            >
+              <Pencil className="w-3.5 h-3.5 text-[#2F7D32]" />
+              <span>Editar Meus Dados Reais</span>
+            </button>
+          </div>
           <p className="text-xs text-gray-200 mt-0.5">
             Acesso master: Gestão de usuários, governança das regras agronômicas e monitoramento da plataforma.
           </p>
@@ -224,22 +250,48 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         <div className="font-bold text-gray-900 flex items-center space-x-1.5">
                           <span>{user.name}</span>
                           {isCurrent && (
-                            <span className="text-[10px] font-bold bg-[#173F2B] text-white px-1.5 rounded">
+                            <span className="text-[10px] font-bold bg-[#173F2B] text-white px-1.5 py-0.5 rounded">
                               Você
                             </span>
+                          )}
+                          {isCurrent && (
+                            <button
+                              onClick={() => {
+                                setEditName(user.name);
+                                setEditEmail(user.email);
+                                setEditCity(user.city || '');
+                                setEditState(user.state || '');
+                                setIsEditProfileOpen(true);
+                              }}
+                              className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline flex items-center space-x-0.5 cursor-pointer ml-1"
+                              title="Editar meus dados reais"
+                            >
+                              <Pencil className="w-3 h-3 inline mr-0.5" />
+                              <span>Editar</span>
+                            </button>
                           )}
                         </div>
                         {user.creaCrmv && (
                           <span className="text-[10px] text-gray-400 block">{user.creaCrmv}</span>
                         )}
-                        {userProperties.length > 0 && (
+                        {user.role === 'admin' ? (
+                          <span className="text-[10px] text-purple-700 font-semibold block">
+                            Administrador da Plataforma (Sem fazenda vinculada)
+                          </span>
+                        ) : userProperties.length > 0 ? (
                           <span className="text-[10px] text-emerald-700 font-medium block">
                             {userProperties.length} fazenda(s) vinculada(s)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 font-medium block">
+                            Nenhuma fazenda cadastrada
                           </span>
                         )}
                       </td>
 
-                      <td className="p-3 font-mono text-[11px] text-gray-600">{user.email}</td>
+                      <td className="p-3 font-mono text-[11px] text-gray-600">
+                        {user.email ? user.email : <span className="text-gray-400 italic">Não informado</span>}
+                      </td>
 
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -251,7 +303,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
                         </span>
                       </td>
 
-                      <td className="p-3 text-gray-600">{user.city || 'Bahia'} - {user.state || 'BA'}</td>
+                      <td className="p-3 text-gray-600">
+                        {user.city && user.state
+                          ? `${user.city} - ${user.state}`
+                          : (user.city || user.state || <span className="text-gray-400 italic">Não informada</span>)}
+                      </td>
 
                       <td className="p-3 text-gray-500 font-mono text-[11px]">{user.createdAt}</td>
 
@@ -384,6 +440,129 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </div>
               <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">Ativa & Aprovada</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDITAR MEUS DADOS DE ADMINISTRADOR */}
+      {isEditProfileOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-gray-100 overflow-hidden relative">
+            <div className="bg-gradient-to-r from-[#173F2B] to-[#2F7D32] p-5 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
+                  <UserCheck className="w-5 h-5 text-[#8BC34A]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Editar Meus Dados de Administrador</h3>
+                  <p className="text-[11px] text-[#8BC34A]">
+                    Atualize seu nome, e-mail real e localização
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsEditProfileOpen(false)}
+                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (onUpdateUserProfile) {
+                  onUpdateUserProfile(currentUser.id, {
+                    name: editName.trim() || 'Guilherme',
+                    email: editEmail.trim(),
+                    city: editCity.trim(),
+                    state: editState.trim().toUpperCase()
+                  });
+                }
+                setIsEditProfileOpen(false);
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Seu Nome
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Seu nome"
+                  className="w-full text-xs p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Seu E-mail Real
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="seuemail@exemplo.com"
+                  className="w-full text-xs p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32]"
+                />
+                <p className="text-[10px] text-gray-400 mt-1">
+                  Substitui qualquer e-mail fictício no sistema.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Sua Cidade Real
+                  </label>
+                  <input
+                    type="text"
+                    value={editCity}
+                    onChange={(e) => setEditCity(e.target.value)}
+                    placeholder="Sua cidade"
+                    className="w-full text-xs p-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    UF
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    value={editState}
+                    onChange={(e) => setEditState(e.target.value.toUpperCase())}
+                    placeholder="UF"
+                    className="w-full text-xs p-2.5 rounded-lg border border-gray-300 font-bold uppercase text-center focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32]"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 leading-relaxed">
+                ℹ️ <strong>Perfil Master:</strong> Como criador e administrador do sistema, você tem controle pleno da plataforma e não precisa cadastrar nenhuma fazenda.
+              </div>
+
+              <div className="pt-2 border-t flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditProfileOpen(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#8BC34A]" />
+                  <span>Salvar Dados Reais</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

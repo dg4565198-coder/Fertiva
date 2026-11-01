@@ -4,11 +4,11 @@ export const INITIAL_USERS: UserAccount[] = [
   {
     id: 'user-admin-guilherme',
     name: 'Guilherme',
-    email: 'guilherme@fertiva.com.br',
+    email: '',
     role: 'admin',
     tier: 'consultoria',
-    city: 'Salvador',
-    state: 'BA',
+    city: '',
+    state: '',
     createdAt: '2026-10-31'
   }
 ];

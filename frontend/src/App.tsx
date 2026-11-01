@@ -49,11 +49,37 @@ export function App() {
     });
   };
 
-  // Lista de usuários registrados no sistema (inicia limpo com Guilherme Admin)
-  const [usersList, setUsersList] = useState<UserAccount[]>(INITIAL_USERS);
+  // Lista de usuários registrados no sistema
+  const [usersList, setUsersList] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem('fertiva_users_list');
+    if (saved) {
+      try {
+        const parsed: UserAccount[] = JSON.parse(saved);
+        return parsed.map((u) => {
+          if (u.id === 'user-admin-guilherme' && (u.email === 'guilherme@fertiva.com.br' || u.city === 'Salvador')) {
+            return { ...u, email: '', city: '', state: '' };
+          }
+          return u;
+        });
+      } catch {}
+    }
+    return INITIAL_USERS;
+  });
 
   // Usuário atualmente autenticado (Guilherme)
-  const [currentUser, setCurrentUser] = useState<UserAccount>(INITIAL_USERS[0]);
+  const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
+    const saved = localStorage.getItem('fertiva_current_user');
+    if (saved) {
+      try {
+        const parsed: UserAccount = JSON.parse(saved);
+        if (parsed.id === 'user-admin-guilherme' && (parsed.email === 'guilherme@fertiva.com.br' || parsed.city === 'Salvador')) {
+          return { ...parsed, email: '', city: '', state: '' };
+        }
+        return parsed;
+      } catch {}
+    }
+    return INITIAL_USERS[0];
+  });
 
   // Propriedades e talhões (iniciam 100% vazios para o usuário cadastrar os seus dados reais)
   const [properties, setProperties] = useState<Property[]>(DEMO_PROPERTIES);
@@ -103,11 +129,32 @@ export function App() {
 
   // Atualização de plano de usuário
   const handleUpdateUserTier = (userId: string, newTier: SubscriptionTier) => {
-    setUsersList((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, tier: newTier } : u))
-    );
+    setUsersList((prev) => {
+      const updated = prev.map((u) => (u.id === userId ? { ...u, tier: newTier } : u));
+      localStorage.setItem('fertiva_users_list', JSON.stringify(updated));
+      return updated;
+    });
     if (currentUser.id === userId) {
-      setCurrentUser((prev) => ({ ...prev, tier: newTier }));
+      setCurrentUser((prev) => {
+        const updated = { ...prev, tier: newTier };
+        localStorage.setItem('fertiva_current_user', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const handleUpdateUserProfile = (userId: string, updatedData: Partial<UserAccount>) => {
+    setUsersList((prev) => {
+      const updated = prev.map((u) => (u.id === userId ? { ...u, ...updatedData } : u));
+      localStorage.setItem('fertiva_users_list', JSON.stringify(updated));
+      return updated;
+    });
+    if (currentUser.id === userId) {
+      setCurrentUser((prev) => {
+        const updated = { ...prev, ...updatedData };
+        localStorage.setItem('fertiva_current_user', JSON.stringify(updated));
+        return updated;
+      });
     }
   };
 
@@ -276,6 +323,7 @@ export function App() {
               plotsList={plots}
               samplesList={samples}
               onUpdateUserTier={handleUpdateUserTier}
+              onUpdateUserProfile={handleUpdateUserProfile}
               onOpenLogin={() => setIsAuthModalOpen(true)}
             />
           )}
