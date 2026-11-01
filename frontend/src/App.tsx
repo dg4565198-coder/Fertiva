@@ -92,13 +92,44 @@ export function App() {
     return INITIAL_USERS[0];
   });
 
-  // Propriedades e talhões (iniciam 100% vazios para o usuário cadastrar os seus dados reais)
-  const [properties, setProperties] = useState<Property[]>(DEMO_PROPERTIES);
-  const [plots, setPlots] = useState<Plot[]>(DEMO_PLOTS);
-  const [samples, setSamples] = useState<SoilSample[]>(DEMO_SOIL_SAMPLES);
+  // Propriedades e talhões (persistidos no sistema)
+  const [properties, setProperties] = useState<Property[]>(() => {
+    const saved = localStorage.getItem('fertiva_properties');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEMO_PROPERTIES;
+  });
 
-  // Amostra e talhão selecionados
-  const [selectedSampleId, setSelectedSampleId] = useState<string>('');
+  const [plots, setPlots] = useState<Plot[]>(() => {
+    const saved = localStorage.getItem('fertiva_plots');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEMO_PLOTS;
+  });
+
+  const [samples, setSamples] = useState<SoilSample[]>(() => {
+    const saved = localStorage.getItem('fertiva_samples');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEMO_SOIL_SAMPLES;
+  });
+
+  // Amostra e talhão selecionados (persistidos)
+  const [selectedSampleId, setSelectedSampleId] = useState<string>(() => {
+    return localStorage.getItem('fertiva_selected_sample_id') || '';
+  });
 
   const selectedSample = samples.find((s) => s.id === selectedSampleId) || samples[0] || null;
   const selectedPlot = plots.find((p) => p.id === selectedSample?.plotId) || plots[0] || null;
@@ -106,7 +137,7 @@ export function App() {
 
   // Busca amostra de subsuperfície compatível para o mesmo talhão (camada 20-40 cm)
   const subsurfaceSample = selectedSample
-    ? samples.find((s) => s.plotId === selectedSample.plotId && s.depthStartCm >= 20) || null
+    ? samples.find((s) => s.plotId === selectedSample.plotId && s.depthStartCm >= 20 && s.id !== selectedSample.id) || null
     : null;
 
   // Login
@@ -174,11 +205,19 @@ export function App() {
   };
 
   const handleAddProperty = (newProp: Property) => {
-    setProperties((prev) => [newProp, ...prev]);
+    setProperties((prev) => {
+      const updated = [newProp, ...prev];
+      localStorage.setItem('fertiva_properties', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleAddPlot = (newPlot: Plot) => {
-    setPlots((prev) => [newPlot, ...prev]);
+    setPlots((prev) => {
+      const updated = [newPlot, ...prev];
+      localStorage.setItem('fertiva_plots', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleAddSample = (
@@ -188,17 +227,17 @@ export function App() {
     if (newPlotData) {
       const defaultPropId = properties[0]?.id || `prop-${Date.now()}`;
       if (properties.length === 0) {
-        setProperties([
-          {
-            id: defaultPropId,
-            userId: currentUser.id,
-            name: 'Minha Fazenda',
-            totalAreaHa: newPlotData.areaHa * 2,
-            city: currentUser.city || 'Eunápolis',
-            state: 'BA',
-            isDemo: false
-          }
-        ]);
+        const newFarm: Property = {
+          id: defaultPropId,
+          userId: currentUser.id,
+          name: 'Minha Fazenda',
+          totalAreaHa: newPlotData.areaHa * 2,
+          city: currentUser.city || 'Eunápolis',
+          state: 'BA',
+          isDemo: false
+        };
+        setProperties([newFarm]);
+        localStorage.setItem('fertiva_properties', JSON.stringify([newFarm]));
       }
       const newPlot: Plot = {
         id: newSample.plotId,
@@ -208,10 +247,48 @@ export function App() {
         currentCrop: newPlotData.currentCrop,
         isDemo: false
       };
-      setPlots((prev) => [newPlot, ...prev]);
+      setPlots((prev) => {
+        const updated = [newPlot, ...prev];
+        localStorage.setItem('fertiva_plots', JSON.stringify(updated));
+        return updated;
+      });
     }
-    setSamples((prev) => [newSample, ...prev]);
+
+    setSamples((prev) => {
+      const updated = [newSample, ...prev];
+      localStorage.setItem('fertiva_samples', JSON.stringify(updated));
+      return updated;
+    });
     setSelectedSampleId(newSample.id);
+    localStorage.setItem('fertiva_selected_sample_id', newSample.id);
+  };
+
+  const handleAddSamplesBatch = (
+    newSamplesList: SoilSample[],
+    newPlotsList?: Plot[]
+  ) => {
+    if (newPlotsList && newPlotsList.length > 0) {
+      setPlots((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const toAdd = newPlotsList.filter((p) => !existingIds.has(p.id));
+        const updated = [...toAdd, ...prev];
+        localStorage.setItem('fertiva_plots', JSON.stringify(updated));
+        return updated;
+      });
+    }
+
+    setSamples((prev) => {
+      const existingIds = new Set(prev.map((s) => s.id));
+      const toAdd = newSamplesList.filter((s) => !existingIds.has(s.id));
+      const updated = [...toAdd, ...prev];
+      localStorage.setItem('fertiva_samples', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (newSamplesList.length > 0) {
+      setSelectedSampleId(newSamplesList[0].id);
+      localStorage.setItem('fertiva_selected_sample_id', newSamplesList[0].id);
+    }
   };
 
   return (
@@ -273,8 +350,10 @@ export function App() {
               plots={plots}
               references={references}
               onAddSample={handleAddSample}
+              onAddSamplesBatch={handleAddSamplesBatch}
               onNavigateToInterpretation={(s) => {
                 setSelectedSampleId(s.id);
+                localStorage.setItem('fertiva_selected_sample_id', s.id);
                 setCurrentTab('interpretation');
               }}
             />
@@ -285,7 +364,10 @@ export function App() {
               sample={selectedSample}
               samplesList={samples}
               currentRole={currentUser.role}
-              onSelectSample={(s) => setSelectedSampleId(s.id)}
+              onSelectSample={(s) => {
+                setSelectedSampleId(s.id);
+                localStorage.setItem('fertiva_selected_sample_id', s.id);
+              }}
               onNavigate={setCurrentTab}
             />
           )}

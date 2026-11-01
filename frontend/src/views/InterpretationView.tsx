@@ -50,6 +50,14 @@ export const InterpretationView: React.FC<InterpretationViewProps> = ({
   const derived = calculateIndices(sample);
   const diagnostics = diagnoseAttributes(sample);
 
+  const currentIndex = samplesList.findIndex((s) => s.id === sample.id);
+  const nextSample = currentIndex >= 0 && currentIndex < samplesList.length - 1 ? samplesList[currentIndex + 1] : null;
+
+  // Verifica se há amostra de subsuperfície correspondente (20-40 cm) para o mesmo talhão
+  const pairedSubsurface = sample.depthStartCm === 0
+    ? samplesList.find((s) => s.plotId === sample.plotId && s.depthStartCm >= 20 && s.id !== sample.id)
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Topo com Seletor de Amostra e Alternador de Visão */}
@@ -57,6 +65,9 @@ export const InterpretationView: React.FC<InterpretationViewProps> = ({
         <div>
           <div className="flex items-center space-x-2">
             <h2 className="text-lg font-bold text-gray-900">Diagnóstico & Interpretação da Fertilidade</h2>
+            <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+              {sample.depthStartCm >= 20 ? 'Subsuperfície (20-40 cm)' : 'Camada Arável (0-20 cm)'}
+            </span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
             {sample.plotName} ({sample.depthStartCm}-{sample.depthEndCm} cm) • Laudo: {sample.labReportNumber} • Fonte: CFSEMG 5ª Aproximação / Embrapa
@@ -89,6 +100,75 @@ export const InterpretationView: React.FC<InterpretationViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Banner de Fluxo Guiado entre Múltiplos Talhões / Profundidades */}
+      {samplesList.length > 1 && (
+        <div className="bg-gradient-to-r from-[#173F2B] to-[#24543B] text-white p-5 rounded-2xl shadow-sm space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-base">🧭</span>
+                <span className="text-xs font-black uppercase tracking-wider text-[#8BC34A]">
+                  Fluxo Guiado por Talhão ({currentIndex + 1} de {samplesList.length})
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-white mt-0.5">
+                Interpretando agora: <span className="text-[#8BC34A]">{sample.plotName}</span> ({sample.depthStartCm}-{sample.depthEndCm} cm)
+              </h3>
+            </div>
+
+            {nextSample && (
+              <button
+                type="button"
+                onClick={() => onSelectSample(nextSample)}
+                className="px-4 py-2 rounded-xl text-xs font-black bg-[#8BC34A] text-[#173F2B] hover:bg-white transition-all shadow-md flex items-center space-x-1.5 self-start sm:self-auto shrink-0"
+              >
+                <span>Avançar para {nextSample.plotName} ({nextSample.depthStartCm}-{nextSample.depthEndCm} cm)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Seletores rápidos em pílula para todos os talhões/amostras do laudo */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-0.5">
+            {samplesList.map((s) => {
+              const isActive = s.id === sample.id;
+              const isSub = s.depthStartCm >= 20;
+
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => onSelectSample(s)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center space-x-1.5 ${
+                    isActive
+                      ? 'bg-white text-[#173F2B] shadow-sm ring-2 ring-[#8BC34A]'
+                      : 'bg-white/10 hover:bg-white/20 text-gray-200 border border-white/10'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#2F7D32]' : 'bg-gray-400'}`}></span>
+                  <span>{s.plotName}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                      isSub ? 'bg-blue-900/50 text-blue-200' : 'bg-emerald-900/50 text-emerald-200'
+                    }`}
+                  >
+                    {s.depthStartCm}-{s.depthEndCm} cm
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {pairedSubsurface && (
+            <div className="text-[11px] text-emerald-100/90 flex items-center space-x-1.5 bg-black/20 p-2.5 rounded-xl">
+              <CheckCircle2 className="w-4 h-4 text-[#8BC34A] shrink-0" />
+              <span>
+                Camada de subsuperfície <strong>20-40 cm</strong> detectada e vinculada a este talhão. Ela será usada automaticamente na aba de <strong>Calagem & Gessagem</strong>.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Avisos de consistência agronômica se houver */}
       {!derived.isConsistent && (
@@ -266,21 +346,32 @@ export const InterpretationView: React.FC<InterpretationViewProps> = ({
         </div>
       )}
 
-      {/* Próximo Passo: Direcionamento para Calagem e Gessagem */}
-      <div className="bg-[#173F2B] text-white p-6 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+      {/* Próximo Passo: Direcionamento para Calagem e Gessagem OU Próximo Talhão */}
+      <div className="bg-[#173F2B] text-white p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
         <div>
-          <h3 className="text-base font-bold">Diagnóstico Concluído. Próximo passo: Calagem e Gessagem</h3>
+          <h3 className="text-base font-bold">Diagnóstico Concluído: {sample.plotName} ({sample.depthStartCm}-{sample.depthEndCm} cm)</h3>
           <p className="text-xs text-gray-200 mt-0.5">
-            Calcule determinística e rastreavelmente as toneladas de calcário e verifique se há necessidade de gesso para o talhão.
+            Calcule as doses de calcário e gesso na aba de correções, ou avance para interpretar o próximo talhão deste laudo.
           </p>
         </div>
-        <button
-          onClick={() => onNavigate('corrections')}
-          className="px-4 py-2.5 rounded-lg text-xs font-bold bg-[#8BC34A] text-[#173F2B] hover:bg-white transition-all shrink-0 flex items-center space-x-2"
-        >
-          <span>Ir para Calagem & Gessagem</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 shrink-0">
+          {nextSample && (
+            <button
+              onClick={() => onSelectSample(nextSample)}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-white/15 text-white hover:bg-white/25 transition-all flex items-center justify-center space-x-1.5 border border-white/20"
+            >
+              <span>Interpretar Próximo: {nextSample.plotName}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => onNavigate('corrections')}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black bg-[#8BC34A] text-[#173F2B] hover:bg-white transition-all flex items-center justify-center space-x-2 shadow-sm"
+          >
+            <span>Ir para Calagem & Gessagem</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
