@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { SoilSample, Plot } from '../types';
-import { calculateFertilization } from '../lib/agronomicEngine';
+import { SoilSample, Plot, TechnicalReference } from '../types';
+import { calculateFertilization, getAllActiveCrops } from '../lib/agronomicEngine';
 import {
   Wheat,
   TrendingUp,
@@ -11,22 +11,26 @@ import {
   Info,
   Calendar,
   PackageCheck,
-  ArrowRight
+  ArrowRight,
+  Sprout
 } from 'lucide-react';
 import { NavTab } from '../components/Sidebar';
 
 interface FertilizationViewProps {
   sample: SoilSample | null;
   plot: Plot | null;
+  references?: TechnicalReference[];
   onNavigate: (tab: NavTab) => void;
 }
 
 export const FertilizationView: React.FC<FertilizationViewProps> = ({
   sample,
   plot,
+  references,
   onNavigate
 }) => {
-  const [crop, setCrop] = useState<'milho' | 'cafe' | 'cacau' | 'mandioca' | 'pastagem' | 'eucalipto'>('milho');
+  const availableCrops = getAllActiveCrops(references);
+  const [crop, setCrop] = useState<string>(plot?.currentCrop || availableCrops[0] || 'Milho');
   const [yieldGoal, setYieldGoal] = useState<'baixa' | 'media' | 'alta'>('alta');
 
   const plotArea = plot?.areaHa || 25.0;
@@ -43,7 +47,7 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
     );
   }
 
-  const plan = calculateFertilization(crop, yieldGoal, sample, plotArea);
+  const plan = calculateFertilization(crop, yieldGoal, sample, plotArea, references);
 
   return (
     <div className="space-y-6">
@@ -54,25 +58,26 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
             <h2 className="text-lg font-bold text-gray-900">Recomendação de Adubação & Nutrição</h2>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Talhão: {plot?.name || sample.plotName} ({plotArea} ha) • Culturas prioritárias da Bahia
+            Talhão: {plot?.name || sample.plotName} ({plotArea} ha) • Baseado nos Manuais Ativos da Biblioteca
           </p>
         </div>
 
         {/* Filtros de Cultura e Produtividade */}
         <div className="flex flex-wrap items-center gap-3">
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Cultura Alvo</label>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">
+              Cultura Alvo ({availableCrops.length} disponíveis)
+            </label>
             <select
               value={crop}
-              onChange={(e) => setCrop(e.target.value as any)}
-              className="text-xs font-semibold p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#2F7D32]"
+              onChange={(e) => setCrop(e.target.value)}
+              className="text-xs font-semibold p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#2F7D32] bg-white font-bold text-gray-900"
             >
-              <option value="milho">Milho (Grãos / Silagem)</option>
-              <option value="cafe">Café Conilon / Arábica</option>
-              <option value="cacau">Cacau (Sul da Bahia)</option>
-              <option value="mandioca">Mandioca (Mesa / Indústria)</option>
-              <option value="pastagem">Pastagens (Brachiaria / Panicum)</option>
-              <option value="eucalipto">Eucalipto (Silvicultura)</option>
+              {availableCrops.map((c) => (
+                <option key={c} value={c}>
+                  🌱 {c}
+                </option>
+              ))}
             </select>
           </div>
 

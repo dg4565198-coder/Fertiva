@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Plot, SoilSample } from '../types';
-import { calculateIndices } from '../lib/agronomicEngine';
+import { Plot, SoilSample, TechnicalReference } from '../types';
+import { calculateIndices, getAllActiveCrops } from '../lib/agronomicEngine';
 import { extractTextFromPdf, parseSoilLabReport, ExtractedSoilData } from '../lib/pdfExtractor';
 import {
   FileText,
@@ -24,22 +24,25 @@ import { createWorker } from 'tesseract.js';
 
 interface SoilEntryViewProps {
   plots: Plot[];
+  references?: TechnicalReference[];
   onAddSample: (sample: SoilSample, newPlotData?: { name: string; areaHa: number; currentCrop: string }) => void;
   onNavigateToInterpretation: (sample: SoilSample) => void;
 }
 
 export const SoilEntryView: React.FC<SoilEntryViewProps> = ({
   plots,
+  references,
   onAddSample,
   onNavigateToInterpretation
 }) => {
+  const availableCrops = getAllActiveCrops(references);
   const [entryMode, setEntryMode] = useState<'ocr' | 'manual'>('ocr');
   const [selectedPlotId, setSelectedPlotId] = useState<string>(plots[0]?.id || 'new');
 
   // Novo talhão cadastrado diretamente aqui caso não exista
   const [inlinePlotName, setInlinePlotName] = useState('Talhão 01 - Principal');
   const [inlinePlotArea, setInlinePlotArea] = useState('20.0');
-  const [inlinePlotCrop, setInlinePlotCrop] = useState('Milho');
+  const [inlinePlotCrop, setInlinePlotCrop] = useState(availableCrops[0] || 'Milho');
 
   // Input de arquivos nativo do sistema (celular ou computador)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -344,12 +347,11 @@ export const SoilEntryView: React.FC<SoilEntryViewProps> = ({
                 onChange={(e) => setInlinePlotCrop(e.target.value)}
                 className="w-full text-xs p-2 rounded-lg border border-gray-300 bg-white font-semibold"
               >
-                <option value="Milho">Milho</option>
-                <option value="Café">Café Conilon / Arábica</option>
-                <option value="Cacau">Cacau</option>
-                <option value="Mandioca">Mandioca</option>
-                <option value="Pastagem">Pastagem</option>
-                <option value="Eucalipto">Eucalipto</option>
+                {availableCrops.map((c) => (
+                  <option key={c} value={c}>
+                    🌱 {c}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

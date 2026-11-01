@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { SoilSample, Plot } from '../types';
-import { calculateLiming, calculateGypsum, calculateIndices } from '../lib/agronomicEngine';
+import { SoilSample, Plot, TechnicalReference } from '../types';
+import { calculateLiming, calculateGypsum, calculateIndices, getAllActiveCrops, getCropAgronomicRule } from '../lib/agronomicEngine';
 import {
   Layers,
   CheckCircle2,
@@ -12,7 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  ArrowRight
+  ArrowRight,
+  Sprout
 } from 'lucide-react';
 import { NavTab } from '../components/Sidebar';
 
@@ -20,6 +21,7 @@ interface CorrectionsViewProps {
   sample: SoilSample | null;
   subsurfaceSample: SoilSample | null;
   plot: Plot | null;
+  references?: TechnicalReference[];
   onNavigate: (tab: NavTab) => void;
 }
 
@@ -27,16 +29,28 @@ export const CorrectionsView: React.FC<CorrectionsViewProps> = ({
   sample,
   subsurfaceSample,
   plot,
+  references,
   onNavigate
 }) => {
   const [activeTab, setActiveTab] = useState<'calagem' | 'gessagem'>('calagem');
 
+  const availableCrops = getAllActiveCrops(references);
+  const initialCrop = plot?.currentCrop || availableCrops[0] || 'Milho';
+  const initialRule = getCropAgronomicRule(initialCrop, references).rule;
+
   // Parâmetros de Calagem
-  const [targetV, setTargetV] = useState<number>(60);
+  const [selectedCropPreset, setSelectedCropPreset] = useState<string>(initialCrop);
+  const [targetV, setTargetV] = useState<number>(initialRule.targetV || 60);
   const [prnt, setPrnt] = useState<number>(80);
   const [depthCm, setDepthCm] = useState<number>(20);
   const [applicationFactor, setApplicationFactor] = useState<number>(1.0);
   const [showMemory, setShowMemory] = useState<boolean>(true);
+
+  const handleSelectCropPreset = (cropName: string) => {
+    setSelectedCropPreset(cropName);
+    const { rule } = getCropAgronomicRule(cropName, references);
+    setTargetV(rule.targetV);
+  };
 
   // Parâmetros de Gessagem
   const [cropType, setCropType] = useState<'anual' | 'perene'>('anual');
@@ -117,6 +131,24 @@ export const CorrectionsView: React.FC<CorrectionsViewProps> = ({
                   <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
                     Parâmetros Agronômicos
                   </h3>
+                </div>
+                {/* Seletor Rápido de Cultura da Biblioteca */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center space-x-1">
+                    <Sprout className="w-3.5 h-3.5 text-[#2F7D32]" />
+                    <span>Cultura Meta (Regra dos Livros da Biblioteca)</span>
+                  </label>
+                  <select
+                    value={selectedCropPreset}
+                    onChange={(e) => handleSelectCropPreset(e.target.value)}
+                    className="w-full text-xs p-2 rounded-lg border border-gray-300 bg-emerald-50/30 font-bold text-gray-900 focus:ring-1 focus:ring-[#2F7D32]"
+                  >
+                    {availableCrops.map((c) => (
+                      <option key={c} value={c}>
+                        🌱 {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Saturação por Bases Desejada (V2%) */}

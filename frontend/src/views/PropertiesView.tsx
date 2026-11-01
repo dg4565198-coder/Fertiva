@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Property, Plot, UserAccount } from '../types';
+import { Property, Plot, UserAccount, TechnicalReference } from '../types';
+import { getAllActiveCrops } from '../lib/agronomicEngine';
 import {
   MapPin,
   Layers,
@@ -17,6 +18,7 @@ interface PropertiesViewProps {
   properties: Property[];
   plots: Plot[];
   currentUser: UserAccount;
+  references?: TechnicalReference[];
   onAddProperty: (prop: Property) => void;
   onAddPlot: (plot: Plot) => void;
 }
@@ -25,9 +27,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   properties,
   plots,
   currentUser,
+  references,
   onAddProperty,
   onAddPlot
 }) => {
+  const availableCrops = getAllActiveCrops(references);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(properties[0]?.id || '');
   const [showPropModal, setShowPropModal] = useState(false);
   const [showPlotModal, setShowPlotModal] = useState(false);
@@ -41,7 +45,7 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
   // Formulário Talhão
   const [newPlotName, setNewPlotName] = useState('');
   const [newPlotArea, setNewPlotArea] = useState('');
-  const [newPlotCrop, setNewPlotCrop] = useState('Milho');
+  const [newPlotCrop, setNewPlotCrop] = useState(availableCrops[0] || 'Milho');
   const [newPlotTexture, setNewPlotTexture] = useState<'Argiloso' | 'Textura Média' | 'Arenoso'>('Argiloso');
 
   const selectedProperty = properties.find((p) => p.id === selectedPropertyId) || properties[0];
@@ -407,12 +411,11 @@ export const PropertiesView: React.FC<PropertiesViewProps> = ({
                     onChange={(e) => setNewPlotCrop(e.target.value)}
                     className="w-full text-xs p-2.5 rounded-lg border border-gray-300"
                   >
-                    <option value="Milho">Milho</option>
-                    <option value="Café">Café</option>
-                    <option value="Cacau">Cacau</option>
-                    <option value="Mandioca">Mandioca</option>
-                    <option value="Pastagem">Pastagem</option>
-                    <option value="Eucalipto">Eucalipto</option>
+                    {availableCrops.map((c) => (
+                      <option key={c} value={c}>
+                        🌱 {c}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

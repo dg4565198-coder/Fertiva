@@ -13,12 +13,41 @@ import { LibraryView } from './views/LibraryView';
 import { ReportsView } from './views/ReportsView';
 import { AdminView } from './views/AdminView';
 
-import { Property, Plot, SoilSample, UserAccount, SubscriptionTier } from './types';
-import { INITIAL_USERS, DEMO_PROPERTIES, DEMO_PLOTS, DEMO_SOIL_SAMPLES } from './data/mockData';
+import { Property, Plot, SoilSample, UserAccount, SubscriptionTier, TechnicalReference } from './types';
+import { INITIAL_USERS, DEMO_PROPERTIES, DEMO_PLOTS, DEMO_SOIL_SAMPLES, TECHNICAL_REFERENCES_CATALOG } from './data/mockData';
 
 export function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Base de Livros e Referências Técnicas (Persistida e Dinâmica)
+  const [references, setReferences] = useState<TechnicalReference[]>(() => {
+    const saved = localStorage.getItem('fertiva_technical_references');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return TECHNICAL_REFERENCES_CATALOG;
+  });
+
+  const handleAddReference = (newRef: TechnicalReference) => {
+    setReferences((prev) => {
+      const updated = [newRef, ...prev];
+      localStorage.setItem('fertiva_technical_references', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleRemoveReference = (id: string) => {
+    setReferences((prev) => {
+      const updated = prev.filter((r) => r.id !== id);
+      localStorage.setItem('fertiva_technical_references', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // Lista de usuários registrados no sistema (inicia limpo com Guilherme Admin)
   const [usersList, setUsersList] = useState<UserAccount[]>(INITIAL_USERS);
@@ -175,6 +204,7 @@ export function App() {
               properties={properties}
               plots={plots}
               currentUser={currentUser}
+              references={references}
               onAddProperty={handleAddProperty}
               onAddPlot={handleAddPlot}
             />
@@ -183,6 +213,7 @@ export function App() {
           {currentTab === 'soil-entry' && (
             <SoilEntryView
               plots={plots}
+              references={references}
               onAddSample={handleAddSample}
               onNavigateToInterpretation={(s) => {
                 setSelectedSampleId(s.id);
@@ -206,6 +237,7 @@ export function App() {
               sample={selectedSample}
               subsurfaceSample={subsurfaceSample}
               plot={selectedPlot}
+              references={references}
               onNavigate={setCurrentTab}
             />
           )}
@@ -214,11 +246,18 @@ export function App() {
             <FertilizationView
               sample={selectedSample}
               plot={selectedPlot}
+              references={references}
               onNavigate={setCurrentTab}
             />
           )}
 
-          {currentTab === 'library' && <LibraryView />}
+          {currentTab === 'library' && (
+            <LibraryView
+              references={references}
+              onAddReference={handleAddReference}
+              onRemoveReference={handleRemoveReference}
+            />
+          )}
 
           {currentTab === 'reports' && (
             <ReportsView
