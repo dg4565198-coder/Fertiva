@@ -12,7 +12,8 @@ import {
   Calendar,
   PackageCheck,
   ArrowRight,
-  Sprout
+  Sprout,
+  BookOpen
 } from 'lucide-react';
 import { NavTab } from '../components/Sidebar';
 
@@ -58,8 +59,12 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
             <h2 className="text-lg font-bold text-gray-900">Recomendação de Adubação & Nutrição</h2>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            Talhão: {plot?.name || sample.plotName} ({plotArea} ha) • Baseado nos Manuais Ativos da Biblioteca
+            Talhão: {plot?.name || sample.plotName} ({plotArea} ha)
           </p>
+          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-semibold">
+            <BookOpen className="w-3.5 h-3.5 text-[#2F7D32]" />
+            <span>Literatura Base no Motor: <strong>{plan.source}</strong></span>
+          </div>
         </div>
 
         {/* Filtros de Cultura e Produtividade */}
@@ -208,6 +213,9 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
             <span>Memória de Cálculo & Instruções de Aplicação</span>
           </h4>
           <ul className="list-disc list-inside space-y-1 text-gray-600 text-[11px]">
+            <li className="font-semibold text-emerald-900">
+              📖 Publicação Técnica Vinculada: <u>{plan.source}</u>
+            </li>
             {plan.memory.map((m, idx) => (
               <li key={idx}>{m}</li>
             ))}

@@ -13,7 +13,8 @@ import {
   ChevronUp,
   Info,
   ArrowRight,
-  Sprout
+  Sprout,
+  BookOpen
 } from 'lucide-react';
 import { NavTab } from '../components/Sidebar';
 
@@ -36,10 +37,12 @@ export const CorrectionsView: React.FC<CorrectionsViewProps> = ({
 
   const availableCrops = getAllActiveCrops(references);
   const initialCrop = plot?.currentCrop || availableCrops[0] || 'Milho';
-  const initialRule = getCropAgronomicRule(initialCrop, references).rule;
+  const initialMatch = getCropAgronomicRule(initialCrop, references);
+  const initialRule = initialMatch.rule;
 
   // Parâmetros de Calagem
   const [selectedCropPreset, setSelectedCropPreset] = useState<string>(initialCrop);
+  const [activeRuleSource, setActiveRuleSource] = useState<string>(initialMatch.sourceTitle);
   const [targetV, setTargetV] = useState<number>(initialRule.targetV || 60);
   const [prnt, setPrnt] = useState<number>(80);
   const [depthCm, setDepthCm] = useState<number>(20);
@@ -48,8 +51,9 @@ export const CorrectionsView: React.FC<CorrectionsViewProps> = ({
 
   const handleSelectCropPreset = (cropName: string) => {
     setSelectedCropPreset(cropName);
-    const { rule } = getCropAgronomicRule(cropName, references);
+    const { rule, sourceTitle } = getCropAgronomicRule(cropName, references);
     setTargetV(rule.targetV);
+    setActiveRuleSource(sourceTitle);
   };
 
   // Parâmetros de Gessagem
@@ -149,6 +153,10 @@ export const CorrectionsView: React.FC<CorrectionsViewProps> = ({
                       </option>
                     ))}
                   </select>
+                  <p className="text-[10px] text-emerald-800 mt-1.5 font-medium flex items-center gap-1 bg-emerald-50/70 p-1.5 rounded-md border border-emerald-200/60">
+                    <BookOpen className="w-3 h-3 text-[#2F7D32] shrink-0" />
+                    <span className="truncate">Fonte: <strong>{activeRuleSource}</strong></span>
+                  </p>
                 </div>
 
                 {/* Saturação por Bases Desejada (V2%) */}

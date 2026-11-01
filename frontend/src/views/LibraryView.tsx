@@ -438,6 +438,39 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 </div>
               )}
 
+              {/* Regras Agronômicas Extraídas / Conectadas ao Motor */}
+              {ref.cropRules && ref.cropRules.length > 0 && (
+                <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-950">
+                    <span className="flex items-center space-x-1">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Raciocínio Agronômico Ativo no Motor:</span>
+                    </span>
+                    <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded text-[9px] uppercase font-extrabold tracking-wider">
+                      Alimentando Cálculos
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-gray-700 pt-1">
+                    <div className="bg-white p-1.5 rounded-lg border border-emerald-100">
+                      <span className="text-gray-400 block">V% Meta:</span>
+                      <strong className="text-[#2F7D32] text-xs">{ref.cropRules[0].targetV}%</strong>
+                    </div>
+                    <div className="bg-white p-1.5 rounded-lg border border-emerald-100">
+                      <span className="text-gray-400 block">Demanda N:</span>
+                      <strong className="text-gray-900 text-xs">{ref.cropRules[0].nDemandKgHa} kg/ha</strong>
+                    </div>
+                    <div className="bg-white p-1.5 rounded-lg border border-emerald-100">
+                      <span className="text-gray-400 block">Demanda P₂O₅:</span>
+                      <strong className="text-gray-900 text-xs">{ref.cropRules[0].pDemandKgHa} kg/ha</strong>
+                    </div>
+                    <div className="bg-white p-1.5 rounded-lg border border-emerald-100">
+                      <span className="text-gray-400 block">Demanda K₂O:</span>
+                      <strong className="text-gray-900 text-xs">{ref.cropRules[0].kDemandKgHa} kg/ha</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Notas e Escopo */}
               <p className="text-xs text-gray-600 leading-relaxed bg-gray-50/70 p-3 rounded-xl border border-gray-100">
                 {ref.notes}
