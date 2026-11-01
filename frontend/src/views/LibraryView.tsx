@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { TechnicalReference, CropAgronomicRule } from '../types';
 import { extractTextFromPdf, parseBookManualReport, ExtractedBookData } from '../lib/pdfExtractor';
+import { getCropAgronomicRule } from '../lib/agronomicEngine';
 import { createWorker } from 'tesseract.js';
 import {
   BookOpen,
@@ -25,7 +26,11 @@ import {
   FileText,
   Eye,
   RefreshCw,
-  FileCheck2
+  FileCheck2,
+  Database,
+  AlertCircle,
+  Filter,
+  BarChart3
 } from 'lucide-react';
 
 interface LibraryViewProps {
@@ -39,6 +44,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   onAddReference,
   onRemoveReference
 }) => {
+  // Navegação da Biblioteca: Catálogo de Manuais vs. Acervo de Governança
+  const [activeSection, setActiveSection] = useState<'catalog' | 'acervo'>('catalog');
+  const [acervoFilter, setAcervoFilter] = useState<'all' | 'complete' | 'partial' | 'lacuna'>('all');
+  const [acervoSearch, setAcervoSearch] = useState('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -109,6 +119,106 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       setSelectedCrops([...selectedCrops, cropsInput.trim()]);
       setCropsInput('');
     }
+  };
+
+  // Lista unificada de culturas do agronegócio no radar do sistema
+  const radarCrops = [
+    'Soja',
+    'Milho',
+    'Feijão',
+    'Café Conilon',
+    'Cacau',
+    'Mandioca',
+    'Banana',
+    'Citros',
+    'Algodão',
+    'Cana-de-Açúcar',
+    'Pastagem',
+    'Eucalipto',
+    'Pimenta-do-Reino',
+    'Sorgo',
+    'Trigo',
+    'Tomate',
+    'Girassol',
+    'Abacaxi',
+    'Mamona'
+  ];
+
+  // Todas as culturas ativas cadastradas em qualquer livro da biblioteca
+  const allSystemCrops = Array.from(
+    new Set([...radarCrops, ...references.flatMap((r) => r.cropsCovered || [])])
+  ).sort();
+
+  // Mapeamento e Diagnóstico do Acervo por Cultura
+  const acervoItems = allSystemCrops.map((cropName) => {
+    const matchingRefs = references.filter(
+      (ref) =>
+        (ref.cropsCovered && ref.cropsCovered.some((c) => c.toLowerCase() === cropName.toLowerCase())) ||
+        (ref.cropRules && ref.cropRules.some((r) => r.cropName.toLowerCase() === cropName.toLowerCase()))
+    );
+
+    const ruleMatch = getCropAgronomicRule(cropName, references);
+    const rule = ruleMatch.rule;
+
+    let status: 'completo' | 'parcial' | 'lacuna' = 'lacuna';
+    let diagnostic = '';
+    let missingNote = '';
+
+    if (matchingRefs.length >= 2) {
+      status = 'completo';
+      diagnostic = `Embasamento oficial robusto: ${matchingRefs.length} exemplares no sistema cobrindo calagem (V%), tabela de arranque NPK e nutrição mineral.`;
+    } else if (matchingRefs.length === 1) {
+      status = 'parcial';
+      diagnostic = `Possui 1 exemplar oficial cadastrado (${matchingRefs[0].code} - ${matchingRefs[0].institution}).`;
+      missingNote = 'Falta anexar obra complementar de outro órgão de pesquisa para cruzamento de doses e faixas de solo arenoso.';
+    } else {
+      status = 'lacuna';
+      diagnostic = `⚠️ ATENÇÃO: A cultura ${cropName} está com FALTA DE INFORMAÇÃO na biblioteca. O motor de cálculo está usando calibração genérica.`;
+      missingNote = 'Recomendado anexar um manual ou boletim técnico em PDF ou foto para calibrar e auditar 100% das regras desta cultura.';
+    }
+
+    return {
+      cropName,
+      matchingRefs,
+      totalExemplares: matchingRefs.length,
+      status,
+      diagnostic,
+      missingNote,
+      rule
+    };
+  });
+
+  const completeCount = acervoItems.filter((i) => i.status === 'completo').length;
+  const partialCount = acervoItems.filter((i) => i.status === 'parcial').length;
+  const missingCount = acervoItems.filter((i) => i.status === 'lacuna').length;
+
+  const filteredAcervo = acervoItems.filter((item) => {
+    const matchSearch =
+      item.cropName.toLowerCase().includes(acervoSearch.toLowerCase()) ||
+      item.matchingRefs.some(
+        (r) =>
+          r.title.toLowerCase().includes(acervoSearch.toLowerCase()) ||
+          r.code.toLowerCase().includes(acervoSearch.toLowerCase())
+      );
+
+    if (acervoFilter === 'all') return matchSearch;
+    if (acervoFilter === 'complete') return matchSearch && item.status === 'completo';
+    if (acervoFilter === 'partial') return matchSearch && item.status === 'parcial';
+    if (acervoFilter === 'lacuna') return matchSearch && item.status === 'lacuna';
+    return matchSearch;
+  });
+
+  const handleOpenAddForCrop = (cropName: string) => {
+    resetModalForm();
+    setSelectedCrops([cropName]);
+    setNewTitle(`Manual de Adubação e Calagem para a Cultura de ${cropName}`);
+    const match = getCropAgronomicRule(cropName, references);
+    setCustomTargetV(match.rule.targetV.toString());
+    setCustomN(match.rule.nDemandKgHa.toString());
+    setCustomP(match.rule.pDemandKgHa.toString());
+    setCustomK(match.rule.kDemandKgHa.toString());
+    setCustomFormulation(match.rule.suggestedFormulation || '04-14-08');
+    setIsAddModalOpen(true);
   };
 
   const resetModalForm = () => {
@@ -271,20 +381,65 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <Sprout className="w-3.5 h-3.5 mr-1 text-[#2F7D32]" />
-            <strong>{allLibraryCrops.length}</strong> Culturas Disponíveis
-          </span>
+          <button
+            onClick={() => setActiveSection(activeSection === 'acervo' ? 'catalog' : 'acervo')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center space-x-2 border cursor-pointer ${
+              activeSection === 'acervo'
+                ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-400/40'
+                : 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+            }`}
+          >
+            <Database className="w-4 h-4 text-amber-500" />
+            <span>Acervo</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-white font-mono font-bold text-amber-900 border border-amber-200">
+              {allSystemCrops.length} culturas
+            </span>
+          </button>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-md flex items-center space-x-2"
+            className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-md flex items-center space-x-2 cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#8BC34A]" />
             <span>+ Adicionar Manual / Livro Oficial</span>
           </button>
         </div>
       </div>
+
+      {/* Abas de Navegação Superior: Catálogo vs. Acervo */}
+      <div className="flex border-b border-gray-200 space-x-3">
+        <button
+          onClick={() => setActiveSection('catalog')}
+          className={`pb-3 px-4 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+            activeSection === 'catalog'
+              ? 'border-[#2F7D32] text-[#173F2B]'
+              : 'border-transparent text-gray-400 hover:text-gray-700'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Catálogo de Obras & Manuais ({references.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('acervo')}
+          className={`pb-3 px-4 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
+            activeSection === 'acervo'
+              ? 'border-amber-600 text-amber-900 font-extrabold'
+              : 'border-transparent text-gray-400 hover:text-gray-700'
+          }`}
+        >
+          <Database className="w-4 h-4 text-amber-500" />
+          <span>Acervo & Diagnóstico de Culturas ({allSystemCrops.length})</span>
+          {missingCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-extrabold ml-1 animate-pulse">
+              {missingCount} com lacunas
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeSection === 'catalog' && (
+        <div className="space-y-6">
 
       {/* Faixa de Governança e Cruzamento Inteligente */}
       <div className="bg-gradient-to-r from-[#173F2B] via-[#1F4E37] to-[#2F7D32] text-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -501,6 +656,292 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         ))}
       </div>
+    </div>
+  )}
+
+      {/* ===================== ABA 2: ACERVO & GOVERNANÇA DE CULTURAS ===================== */}
+      {activeSection === 'acervo' && (
+        <div className="space-y-6">
+          {/* Métricas do Acervo */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                Total no Radar
+              </span>
+              <div className="flex items-baseline space-x-2 mt-1">
+                <span className="text-2xl font-black text-gray-900">{allSystemCrops.length}</span>
+                <span className="text-xs text-gray-500 font-medium">Culturas monitoradas</span>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 shadow-xs">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Cobertura Completa
+              </span>
+              <div className="flex items-baseline space-x-2 mt-1">
+                <span className="text-2xl font-black text-emerald-950">{completeCount}</span>
+                <span className="text-xs text-emerald-800 font-medium">2+ Manuais Oficiais</span>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 p-4 rounded-xl border border-amber-200 shadow-xs">
+              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                Cobertura Parcial
+              </span>
+              <div className="flex items-baseline space-x-2 mt-1">
+                <span className="text-2xl font-black text-amber-950">{partialCount}</span>
+                <span className="text-xs text-amber-800 font-medium">1 Manual Cadastrado</span>
+              </div>
+            </div>
+
+            <div className="bg-red-50/70 p-4 rounded-xl border border-red-200 shadow-xs">
+              <span className="text-[10px] font-bold text-red-800 uppercase tracking-wider block flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                Falta Informação
+              </span>
+              <div className="flex items-baseline space-x-2 mt-1">
+                <span className="text-2xl font-black text-red-950">{missingCount}</span>
+                <span className="text-xs text-red-800 font-medium">Sem Manuais Anexados</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Faixa Explicativa de Governança */}
+          <div className="bg-gradient-to-r from-emerald-950 via-[#173F2B] to-[#2F7D32] p-5 rounded-2xl text-white shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center space-x-2">
+                <Database className="w-5 h-5 text-amber-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                  Painel de Controle do Acervo & Diagnóstico de Lacunas
+                </h3>
+              </div>
+              <p className="text-xs text-gray-100 max-w-3xl leading-relaxed">
+                Aqui você controla o que o sistema sabe sobre cada cultura. O motor informa quantos exemplares citam cada espécie, o que eles cobrem (calagem, NPK, gessagem) e avisa expressamente: <em>"olha, na cultura Y está faltando informação na biblioteca"</em>.
+              </p>
+            </div>
+          </div>
+
+          {/* Filtros e Busca do Acervo */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-[11px] font-bold text-gray-400 uppercase mr-1">Filtrar Acervo:</span>
+                <button
+                  onClick={() => setAcervoFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    acervoFilter === 'all'
+                      ? 'bg-[#173F2B] text-white shadow-xs'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Todas as Culturas ({allSystemCrops.length})
+                </button>
+                <button
+                  onClick={() => setAcervoFilter('lacuna')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    acervoFilter === 'lacuna'
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'bg-white text-red-700 border border-red-200 hover:bg-red-50'
+                  }`}
+                >
+                  ⚠️ Faltando Informação ({missingCount})
+                </button>
+                <button
+                  onClick={() => setAcervoFilter('partial')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    acervoFilter === 'partial'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-white text-amber-700 border border-amber-200 hover:bg-amber-50'
+                  }`}
+                >
+                  🟡 Cobertura Parcial ({partialCount})
+                </button>
+                <button
+                  onClick={() => setAcervoFilter('complete')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    acervoFilter === 'complete'
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-50'
+                  }`}
+                >
+                  🟢 Cobertura Completa ({completeCount})
+                </button>
+              </div>
+
+              <div className="relative w-full sm:w-72">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  placeholder="Buscar cultura ou obra no acervo..."
+                  value={acervoSearch}
+                  onChange={(e) => setAcervoSearch(e.target.value)}
+                  className="text-xs pl-8 pr-3 py-2 rounded-xl border border-gray-300 w-full focus:outline-none focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32] bg-white shadow-2xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Grade de Cartões de Cada Cultura */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {filteredAcervo.map((item) => (
+              <div
+                key={item.cropName}
+                className={`bg-white rounded-2xl border p-5 shadow-xs flex flex-col justify-between space-y-4 transition-all hover:shadow-md ${
+                  item.status === 'lacuna'
+                    ? 'border-red-200/90 bg-gradient-to-br from-white via-white to-red-50/20 ring-1 ring-red-100'
+                    : (item.status === 'parcial'
+                      ? 'border-amber-200/90 bg-gradient-to-br from-white via-white to-amber-50/20'
+                      : 'border-emerald-200/80 bg-white')
+                }`}
+              >
+                <div className="space-y-3">
+                  {/* Topo do Card */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center space-x-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
+                        item.status === 'lacuna'
+                          ? 'bg-red-100 text-red-700 border border-red-200'
+                          : (item.status === 'parcial'
+                            ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200')
+                      }`}>
+                        <Sprout className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-extrabold text-gray-900 leading-tight">
+                          {item.cropName}
+                        </h3>
+                        <span className="text-[10px] text-gray-400 uppercase font-semibold">
+                          Categoria Agronômica: {item.rule.category}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Badge do Status da Cultura */}
+                    {item.status === 'completo' && (
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 flex items-center space-x-1 shrink-0">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>{item.totalExemplares} Exemplares (Completo)</span>
+                      </span>
+                    )}
+                    {item.status === 'parcial' && (
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200 flex items-center space-x-1 shrink-0">
+                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                        <span>1 Exemplar (Parcial)</span>
+                      </span>
+                    )}
+                    {item.status === 'lacuna' && (
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-red-100 text-red-900 border border-red-200 flex items-center space-x-1 shrink-0">
+                        <AlertTriangle className="w-3 h-3 text-red-600" />
+                        <span>Falta Informação</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Exemplares que Citam esta Cultura */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                      Exemplares no Sistema que Citam sobre {item.cropName}:
+                    </span>
+                    {item.matchingRefs.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.matchingRefs.map((r) => (
+                          <span
+                            key={r.id}
+                            className="text-[11px] font-semibold bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-lg text-gray-800 flex items-center space-x-1"
+                            title={`${r.title} (${r.institution}, ${r.year})`}
+                          >
+                            <BookOpen className="w-3 h-3 text-[#2F7D32]" />
+                            <span><strong>{r.code}</strong> ({r.year})</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-red-800 bg-red-50 p-2.5 rounded-xl border border-red-200 flex items-center space-x-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>Nenhum livro ou boletim técnico oficial anexado especificamente para esta cultura.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* O que os Exemplares Cobrem (Dados Técnicos no Motor) */}
+                  <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-200/80 text-xs space-y-1.5">
+                    <span className="text-[10px] font-bold text-gray-700 uppercase tracking-wider block">
+                      O que está parametrizado no motor para {item.cropName}:
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <span className="text-gray-400 block">Saturação Bases:</span>
+                        <strong className="text-[#2F7D32] text-xs">V% = {item.rule.targetV}%</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <span className="text-gray-400 block">Demanda N:</span>
+                        <strong className="text-gray-900 text-xs">{item.rule.nDemandKgHa} kg/ha</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <span className="text-gray-400 block">Demanda P₂O₅:</span>
+                        <strong className="text-gray-900 text-xs">{item.rule.pDemandKgHa} kg/ha</strong>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-gray-200">
+                        <span className="text-gray-400 block">Demanda K₂O:</span>
+                        <strong className="text-gray-900 text-xs">{item.rule.kDemandKgHa} kg/ha</strong>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-gray-600 pt-0.5">
+                      Formulação comercial sugerida: <strong>{item.rule.suggestedFormulation}</strong> • Produtividade alvo: <strong>{item.rule.targetYield}</strong>
+                    </p>
+                  </div>
+
+                  {/* Diagnóstico Humano do Sistema */}
+                  <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                    item.status === 'lacuna'
+                      ? 'bg-red-50/90 border-red-200 text-red-950'
+                      : (item.status === 'parcial'
+                        ? 'bg-amber-50/90 border-amber-200 text-amber-950'
+                        : 'bg-emerald-50/70 border-emerald-200 text-emerald-950')
+                  }`}>
+                    <div className="flex items-center space-x-1.5 font-bold text-[11px]">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Diagnóstico de Controle do FERTIVA:</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed font-medium">{item.diagnostic}</p>
+                    {item.missingNote && (
+                      <p className="text-[10px] font-bold text-red-700 pt-0.5">
+                        {item.missingNote}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rodapé da Cultura no Acervo com Ação de Anexar */}
+                <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    onClick={() => handleOpenAddForCrop(item.cropName)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#8BC34A]" />
+                    <span>+ Anexar Manual / Livro para {item.cropName}</span>
+                  </button>
+
+                  {item.matchingRefs.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelectedFilter(item.cropName);
+                        setActiveSection('catalog');
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 hover:bg-emerald-50 border border-emerald-200 cursor-pointer"
+                    >
+                      Ver Obras no Catálogo ({item.matchingRefs.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* MODAL: ADICIONAR NOVO MANUAL / LIVRO OFICIAL */}
       {isAddModalOpen && (
