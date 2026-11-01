@@ -59,6 +59,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   // Input de arquivos nativo do sistema (celular ou computador)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const directAttachInputRef = useRef<HTMLInputElement>(null);
+  const cardAttachInputRef = useRef<HTMLInputElement>(null);
+  const [targetRefForAttach, setTargetRefForAttach] = useState<TechnicalReference | null>(null);
 
   // Estado de Anexo e Leitura Automática de Livro/Manual
   const [isProcessingDoc, setIsProcessingDoc] = useState(false);
@@ -433,8 +436,83 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleDirectAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !viewingRef) return;
+
+    setIsLoadingDoc(true);
+    try {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const fType: 'pdf' | 'image' = isPdf ? 'pdf' : 'image';
+      await saveBookBlob(viewingRef.id, file, file.name, fType);
+
+      const entry = await getOrLoadBookUrl(viewingRef.id);
+      if (entry) {
+        setViewingDocUrl(entry.url);
+        setViewingDocName(entry.fileName);
+        setViewingDocType(entry.fileType);
+      }
+
+      const updatedRef: TechnicalReference = {
+        ...viewingRef,
+        hasAttachedFile: true,
+        fileName: file.name,
+        fileType: fType
+      };
+      setViewingRef(updatedRef);
+      onAddReference(updatedRef);
+    } catch (err) {
+      console.error('Erro ao anexar arquivo ao livro:', err);
+      alert('Não foi possível salvar o arquivo PDF no banco local.');
+    } finally {
+      setIsLoadingDoc(false);
+      if (directAttachInputRef.current) directAttachInputRef.current.value = '';
+    }
+  };
+
+  const handleCardAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !targetRefForAttach) return;
+
+    try {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const fType: 'pdf' | 'image' = isPdf ? 'pdf' : 'image';
+      await saveBookBlob(targetRefForAttach.id, file, file.name, fType);
+
+      const updatedRef: TechnicalReference = {
+        ...targetRefForAttach,
+        hasAttachedFile: true,
+        fileName: file.name,
+        fileType: fType
+      };
+      onAddReference(updatedRef);
+      handleOpenPdf(updatedRef);
+    } catch (err) {
+      console.error('Erro ao anexar arquivo no cartão:', err);
+    } finally {
+      setTargetRefForAttach(null);
+      if (cardAttachInputRef.current) cardAttachInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Inputs Ocultos para Anexo Direto de PDFs */}
+      <input
+        type="file"
+        ref={directAttachInputRef}
+        accept="application/pdf,image/*"
+        onChange={handleDirectAttachFile}
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={cardAttachInputRef}
+        accept="application/pdf,image/*"
+        onChange={handleCardAttachFile}
+        className="hidden"
+      />
+
       {/* Topo com Título, Estatísticas e Botão de Adicionar Livro */}
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -796,16 +874,29 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <span>Acessar o PDF</span>
                   </button>
                 ) : ref.officialUrl ? (
-                  <a
-                    href={ref.officialUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all shadow-2xs shrink-0 group/link"
-                    title={`Acessar publicação oficial em ${ref.officialUrl}`}
-                  >
-                    <span>Publicação Oficial</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-gray-500 group-hover/link:translate-x-0.5 transition-transform" />
-                  </a>
+                  <div className="flex items-center space-x-1.5">
+                    <button
+                      onClick={() => {
+                        setTargetRefForAttach(ref);
+                        cardAttachInputRef.current?.click();
+                      }}
+                      className="inline-flex items-center justify-center space-x-1 px-2.5 py-2 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 cursor-pointer"
+                      title="Anexar arquivo PDF a esta obra oficial"
+                    >
+                      <UploadCloud className="w-3.5 h-3.5 text-[#2F7D32]" />
+                      <span>Anexar PDF</span>
+                    </button>
+                    <a
+                      href={ref.officialUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all shadow-2xs shrink-0 group/link"
+                      title={`Acessar publicação oficial em ${ref.officialUrl}`}
+                    >
+                      <span>Publicação Oficial</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-500 group-hover/link:translate-x-0.5 transition-transform" />
+                    </a>
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -1604,23 +1695,41 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   </div>
                 )
               ) : (
-                <div className="text-center p-8 bg-white rounded-2xl border border-gray-200 max-w-md shadow-sm">
-                  <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-                  <h4 className="text-sm font-bold text-gray-800">Arquivo PDF não localizado localmente</h4>
-                  <p className="text-xs text-gray-500 mt-1 mb-4">
-                    O PDF pode ter sido adicionado em outro dispositivo ou limpo da memória do navegador. Você pode anexá-lo novamente pelo botão de edição.
-                  </p>
-                  {viewingRef?.officialUrl && (
-                    <a
-                      href={viewingRef.officialUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32]"
+                <div className="text-center p-8 bg-white rounded-2xl border border-gray-200 max-w-lg shadow-md space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#173F2B] flex items-center justify-center mx-auto border border-emerald-200">
+                    <FileText className="w-7 h-7 text-[#2F7D32]" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-base font-black text-gray-900">
+                      Vincular Arquivo PDF a este Exemplar
+                    </h4>
+                    <p className="text-xs text-gray-600 leading-relaxed max-w-md mx-auto">
+                      As regras agronômicas deste livro (calagem V%, NPK e culturas) <strong>já estão salvas e ativas no motor FERTIVA</strong>. Para visualizar e ler as páginas completas deste manual diretamente na plataforma, selecione o arquivo PDF abaixo para arquivá-lo na memória permanente do sistema.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => directAttachInputRef.current?.click()}
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-black bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
                     >
-                      <span>Acessar Publicação Oficial</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
+                      <UploadCloud className="w-4 h-4 text-[#8BC34A]" />
+                      <span>Selecionar Arquivo PDF para este Livro</span>
+                    </button>
+
+                    {viewingRef?.officialUrl && (
+                      <a
+                        href={viewingRef.officialUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all shadow-2xs flex items-center justify-center space-x-1.5"
+                      >
+                        <span>Publicação Oficial</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

@@ -35,7 +35,8 @@ export function App() {
 
   const handleAddReference = (newRef: TechnicalReference) => {
     setReferences((prev) => {
-      const updated = [newRef, ...prev];
+      const exists = prev.some((r) => r.id === newRef.id);
+      const updated = exists ? prev.map((r) => (r.id === newRef.id ? newRef : r)) : [newRef, ...prev];
       localStorage.setItem('fertiva_technical_references', JSON.stringify(updated));
       return updated;
     });
