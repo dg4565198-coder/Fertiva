@@ -499,11 +499,130 @@ export function calculateGypsum(
   };
 }
 
+import { TechnicalReference, CropAgronomicRule } from '../types';
+
+/**
+ * Retorna todas as culturas ativas e disponíveis no sistema com base nos livros
+ * cadastrados na Biblioteca Técnica. Se novos livros forem adicionados, novas culturas surgem instantaneamente.
+ */
+export function getAllActiveCrops(references?: TechnicalReference[]): string[] {
+  if (!references || references.length === 0) {
+    return ['Milho', 'Café Conilon', 'Cacau', 'Mandioca', 'Pastagem', 'Eucalipto', 'Soja', 'Feijão', 'Banana', 'Algodão'];
+  }
+
+  const set = new Set<string>();
+  for (const ref of references) {
+    if (ref.cropsCovered && Array.isArray(ref.cropsCovered)) {
+      for (const c of ref.cropsCovered) {
+        if (c && c.trim()) set.add(c.trim());
+      }
+    }
+    if (ref.cropRules && Array.isArray(ref.cropRules)) {
+      for (const r of ref.cropRules) {
+        if (r.cropName && r.cropName.trim()) set.add(r.cropName.trim());
+      }
+    }
+  }
+
+  if (set.size === 0) {
+    return ['Milho', 'Café Conilon', 'Cacau', 'Mandioca', 'Pastagem', 'Eucalipto'];
+  }
+
+  return Array.from(set).sort();
+}
+
+/**
+ * Busca a regra agronômica (V% meta, NPK e fonte) para qualquer cultura a partir
+ * do cruzamento dos livros e manuais ativos no sistema.
+ */
+export function getCropAgronomicRule(
+  cropName: string,
+  references?: TechnicalReference[]
+): { rule: CropAgronomicRule; sourceTitle: string } {
+  const norm = (cropName || '').toLowerCase().trim();
+
+  // 1. Tenta encontrar a regra específica em algum manual ativo
+  if (references) {
+    for (const ref of references) {
+      if (ref.cropRules) {
+        const found = ref.cropRules.find(
+          (r) => r.cropName.toLowerCase() === norm || norm.includes(r.cropName.toLowerCase())
+        );
+        if (found) {
+          return { rule: found, sourceTitle: ref.title };
+        }
+      }
+    }
+  }
+
+  // 2. Se for uma cultura cadastrada em um livro sem tabela detalhada, gera calibração agronômica
+  const isGrain = norm.includes('soja') || norm.includes('milho') || norm.includes('feij') || norm.includes('trigo') || norm.includes('arroz') || norm.includes('algod');
+  const isPerennial = norm.includes('caf') || norm.includes('cacau') || norm.includes('banana') || norm.includes('citros') || norm.includes('laranja') || norm.includes('frut');
+  const isRoot = norm.includes('mandioca') || norm.includes('batata') || norm.includes('cenoura') || norm.includes('inhame');
+  const isPasture = norm.includes('past') || norm.includes('braqui') || norm.includes('capim');
+  const isForest = norm.includes('eucalipto') || norm.includes('pinus') || norm.includes('seringa');
+
+  let targetV = 70;
+  let category: CropAgronomicRule['category'] = 'grão';
+  let n = 100;
+  let p = 80;
+  let k = 80;
+  let formulation = '04-14-08';
+  let gypsum = 50;
+
+  if (isGrain) {
+    targetV = norm.includes('soja') ? 70 : (norm.includes('feij') ? 65 : 70);
+    n = norm.includes('soja') ? 20 : 120;
+    p = 80; k = 90;
+    formulation = norm.includes('soja') ? '02-20-20' : '04-14-08';
+    category = 'grão';
+  } else if (isPerennial) {
+    targetV = norm.includes('citros') ? 75 : 60;
+    n = 180; p = 60; k = 180;
+    formulation = '20-05-20';
+    category = 'perene';
+    gypsum = 60;
+  } else if (isRoot) {
+    targetV = 50;
+    n = 40; p = 50; k = 50;
+    formulation = '04-14-08';
+    category = 'raiz';
+  } else if (isPasture) {
+    targetV = 50;
+    n = 50; p = 50; k = 40;
+    formulation = 'Superfosfato Simples';
+    category = 'pastagem';
+  } else if (isForest) {
+    targetV = 40;
+    n = 40; p = 70; k = 60;
+    formulation = '06-30-06';
+    category = 'florestal';
+    gypsum = 60;
+  }
+
+  return {
+    rule: {
+      id: `rule-auto-${norm.replace(/\s+/g, '-')}`,
+      cropName: cropName || 'Cultura Geral',
+      category,
+      targetV,
+      targetYield: 'Meta Padrão Recomendada',
+      nDemandKgHa: n,
+      pDemandKgHa: p,
+      kDemandKgHa: k,
+      suggestedFormulation: formulation,
+      gypsumFactor: gypsum
+    },
+    sourceTitle: 'Literatura Agronômica Consolidada (Embrapa / CFSEMG)'
+  };
+}
+
 export function calculateFertilization(
-  crop: 'milho' | 'cafe' | 'cacau' | 'mandioca' | 'pastagem' | 'eucalipto',
+  crop: string,
   yieldGoal: 'baixa' | 'media' | 'alta',
   sample: SoilSample,
-  areaHa: number
+  areaHa: number,
+  references?: TechnicalReference[]
 ): FertilizationPlan {
   const p = sample.pMehlich1 ?? 8;
   const k = sample.kCmolc ?? 0.12;
@@ -511,78 +630,40 @@ export function calculateFertilization(
   const pStatus = p < 10 ? 'baixo' : (p <= 20 ? 'medio' : 'bom');
   const kStatus = k < 0.15 ? 'baixo' : (k <= 0.30 ? 'medio' : 'bom');
 
-  let nTotal = 100;
-  let p2o5Total = 80;
-  let k2oTotal = 80;
-  let nPlantio = 20;
-  let p2o5Plantio = 80;
-  let k2oPlantio = 30;
-  let nCob = 80;
-  let k2oCob = 50;
-  let cropName = 'Milho';
-  let refSource = 'CFSEMG 5ª Aproximação';
+  const { rule, sourceTitle } = getCropAgronomicRule(crop, references);
 
-  if (crop === 'milho') {
-    cropName = 'Milho (Grãos)';
-    if (yieldGoal === 'alta') {
-      nTotal = 140;
-      p2o5Total = pStatus === 'baixo' ? 110 : (pStatus === 'medio' ? 80 : 50);
-      k2oTotal = kStatus === 'baixo' ? 100 : (kStatus === 'medio' ? 70 : 40);
-    } else if (yieldGoal === 'media') {
-      nTotal = 90;
-      p2o5Total = pStatus === 'baixo' ? 90 : (pStatus === 'medio' ? 60 : 40);
-      k2oTotal = kStatus === 'baixo' ? 80 : (kStatus === 'medio' ? 50 : 30);
-    } else {
-      nTotal = 50;
-      p2o5Total = pStatus === 'baixo' ? 70 : (pStatus === 'medio' ? 40 : 20);
-      k2oTotal = kStatus === 'baixo' ? 60 : (kStatus === 'medio' ? 40 : 20);
-    }
-    nPlantio = 25;
-    nCob = nTotal - nPlantio;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = Math.min(40, k2oTotal);
-    k2oCob = k2oTotal - k2oPlantio;
-  } else if (crop === 'cafe') {
-    cropName = 'Café Conilon / Arábica';
-    refSource = 'Incaper / CFSEMG 5ª Aproximação';
-    if (yieldGoal === 'alta') {
-      nTotal = 280; p2o5Total = 70; k2oTotal = 260;
-    } else if (yieldGoal === 'media') {
-      nTotal = 180; p2o5Total = 50; k2oTotal = 180;
-    } else {
-      nTotal = 100; p2o5Total = 30; k2oTotal = 100;
-    }
-    nPlantio = 0; nCob = nTotal;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = 0; k2oCob = k2oTotal;
-  } else if (crop === 'cacau') {
-    cropName = 'Cacau';
-    refSource = 'CEPLAC / Boletim Técnico Cacau Bahia';
-    nTotal = yieldGoal === 'alta' ? 80 : 50;
-    p2o5Total = pStatus === 'baixo' ? 60 : 30;
-    k2oTotal = kStatus === 'baixo' ? 90 : 40;
-    nPlantio = 0; nCob = nTotal;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = 0; k2oCob = k2oTotal;
-  } else if (crop === 'mandioca') {
-    cropName = 'Mandioca';
-    refSource = 'Embrapa Mandioca e Fruticultura (Cruz das Almas - BA)';
-    nTotal = 40; p2o5Total = pStatus === 'baixo' ? 60 : 30; k2oTotal = kStatus === 'baixo' ? 60 : 30;
-    nPlantio = 10; nCob = 30;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = 20; k2oCob = k2oTotal - 20;
-  } else if (crop === 'pastagem') {
-    cropName = 'Pastagem (Formação/Manutenção)';
-    refSource = 'Embrapa Gado de Corte / CFSEMG';
-    nTotal = 50; p2o5Total = pStatus === 'baixo' ? 70 : 40; k2oTotal = 40;
-    nPlantio = 0; nCob = nTotal;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = 0; k2oCob = k2oTotal;
-  } else {
-    cropName = 'Eucalipto';
-    refSource = 'Recomendações Nutricionais SBS / CFSEMG';
-    nTotal = 40; p2o5Total = 80; k2oTotal = 60;
-    nPlantio = 15; nCob = 25;
+  let nTotal = rule.nDemandKgHa;
+  let p2o5Total = rule.pDemandKgHa;
+  let k2oTotal = rule.kDemandKgHa;
+
+  // Modula por meta de produtividade
+  const mult = yieldGoal === 'alta' ? 1.25 : (yieldGoal === 'media' ? 1.0 : 0.7);
+  nTotal = Math.round(nTotal * mult);
+
+  // Modula pelo teor de P no solo
+  if (pStatus === 'baixo') {
+    p2o5Total = Math.round(p2o5Total * 1.2);
+  } else if (pStatus === 'bom') {
+    p2o5Total = Math.round(p2o5Total * 0.7);
+  }
+
+  // Modula pelo teor de K no solo
+  if (kStatus === 'baixo') {
+    k2oTotal = Math.round(k2oTotal * 1.25);
+  } else if (kStatus === 'bom') {
+    k2oTotal = Math.round(k2oTotal * 0.7);
+  }
+
+  // Parcelamento
+  const isPerennial = rule.category === 'perene' || rule.category === 'pastagem';
+  const nPlantio = isPerennial ? 0 : Math.round(nTotal * 0.2);
+  const nCob = nTotal - nPlantio;
+  const p2o5Plantio = p2o5Total;
+  const k2oPlantio = isPerennial ? 0 : Math.min(30, Math.round(k2oTotal * 0.3));
+  const k2oCob = k2oTotal - k2oPlantio;
+
+  const cropName = rule.cropName;
+  const refSource = sourceTitle;
     p2o5Plantio = p2o5Total;
     k2oPlantio = 20; k2oCob = 40;
   }
