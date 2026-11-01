@@ -23,7 +23,11 @@ import {
   Boxes,
   ExternalLink,
   X,
-  FileText
+  FileText,
+  Ruler,
+  Trees,
+  Calculator,
+  Gauge
 } from 'lucide-react';
 import { NavTab } from '../components/Sidebar';
 
@@ -33,6 +37,71 @@ interface FertilizationViewProps {
   references?: TechnicalReference[];
   onNavigate: (tab: NavTab) => void;
 }
+
+// Configurações agronômicas de espaçamento e população típica por cultura
+export interface CropSpacingConfig {
+  rowSpacing: number; // metros entre linhas / entrelinhas
+  plantSpacing: number; // metros entre plantas na linha
+  defaultMode: 'hectare' | 'linear' | 'planta';
+  description: string;
+}
+
+export const CROP_SPACING_CONFIGS: Record<string, CropSpacingConfig> = {
+  'Soja': {
+    rowSpacing: 0.45,
+    plantSpacing: 0.08,
+    defaultMode: 'linear',
+    description: 'Semeadura mecanizada padrão (0,45m a 0,50m entre linhas).'
+  },
+  'Milho': {
+    rowSpacing: 0.50,
+    plantSpacing: 0.28,
+    defaultMode: 'linear',
+    description: 'População de ~68.000 a 72.000 plantas/ha no espaçamento de 0,50m.'
+  },
+  'Café Conilon': {
+    rowSpacing: 3.00,
+    plantSpacing: 1.00,
+    defaultMode: 'planta',
+    description: 'Plantio adensado com ~3.333 plantas/ha para manejo semi-mecanizado.'
+  },
+  'Cacau': {
+    rowSpacing: 3.00,
+    plantSpacing: 3.00,
+    defaultMode: 'planta',
+    description: 'Espaçamento tradicional 3x3m (~1.111 plantas/ha) em cabruca ou sol pleno.'
+  },
+  'Feijão': {
+    rowSpacing: 0.45,
+    plantSpacing: 0.10,
+    defaultMode: 'linear',
+    description: 'Semeadura em linhas de 0,45m (~220.000 plantas/ha).'
+  },
+  'Mandioca': {
+    rowSpacing: 1.00,
+    plantSpacing: 0.80,
+    defaultMode: 'planta',
+    description: 'Fileira simples 1,0m x 0,8m (~12.500 covas/ha).'
+  },
+  'Banana': {
+    rowSpacing: 3.00,
+    plantSpacing: 2.00,
+    defaultMode: 'planta',
+    description: 'Espaçamento padrão 3x2m (~1.667 touceiras/ha).'
+  },
+  'Cana-de-Açúcar': {
+    rowSpacing: 1.40,
+    plantSpacing: 0.25,
+    defaultMode: 'linear',
+    description: 'Plantio mecanizado em sulcos simples de 1,40m a 1,50m.'
+  },
+  'Algodão': {
+    rowSpacing: 0.76,
+    plantSpacing: 0.12,
+    defaultMode: 'linear',
+    description: 'Espaçamento estreito de 0,76m a 0,90m no Cerrado.'
+  }
+};
 
 // Metas reais de produtividade por cultura
 const CROP_YIELD_TARGETS: Record<string, { label: string; key: string; multiplier: number }[]> = {
@@ -92,7 +161,27 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
   onNavigate
 }) => {
   const availableCrops = getAllActiveCrops(references);
-  const [crop, setCrop] = useState<string>(plot?.currentCrop || availableCrops[0] || 'Milho');
+  const initialCrop = plot?.currentCrop || availableCrops[0] || 'Milho';
+  const [crop, setCrop] = useState<string>(initialCrop);
+
+  const initialSpacingConfig = CROP_SPACING_CONFIGS[initialCrop] || {
+    rowSpacing: 0.50,
+    plantSpacing: 0.28,
+    defaultMode: 'hectare' as const,
+    description: 'Espaçamento padrão.'
+  };
+
+  // Modo de Aplicação: 'hectare' | 'linear' | 'planta'
+  const [applicationMode, setApplicationMode] = useState<'hectare' | 'linear' | 'planta'>(
+    initialSpacingConfig.defaultMode
+  );
+
+  // Espaçamentos da cultura (em metros) e parcelamentos
+  const [spacingRow, setSpacingRow] = useState<number>(initialSpacingConfig.rowSpacing);
+  const [spacingPlant, setSpacingPlant] = useState<number>(initialSpacingConfig.plantSpacing);
+  const [splitApplications, setSplitApplications] = useState<number>(
+    initialSpacingConfig.defaultMode === 'planta' ? 3 : 2
+  );
 
   // Metas de produtividade disponíveis para a cultura
   const yieldOptions = useMemo(() => {
@@ -108,6 +197,37 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
   const [selectedYieldKey, setSelectedYieldKey] = useState<string>(
     yieldOptions[1]?.key || yieldOptions[0]?.key || 'med'
   );
+
+  // Atualização sincronizada ao trocar de cultura
+  const handleCropChange = (newCrop: string) => {
+    setCrop(newCrop);
+    const opts = CROP_YIELD_TARGETS[newCrop];
+    if (opts && opts[1]) setSelectedYieldKey(opts[1].key);
+    else if (opts && opts[0]) setSelectedYieldKey(opts[0].key);
+
+    const cfg = CROP_SPACING_CONFIGS[newCrop];
+    if (cfg) {
+      setSpacingRow(cfg.rowSpacing);
+      setSpacingPlant(cfg.plantSpacing);
+      setApplicationMode(cfg.defaultMode);
+      if (cfg.defaultMode === 'planta') {
+        setSplitApplications(3);
+      }
+    }
+  };
+
+  // Restaura o espaçamento padrão agronômico da cultura atual
+  const handleResetCropSpacing = () => {
+    const cfg = CROP_SPACING_CONFIGS[crop];
+    if (cfg) {
+      setSpacingRow(cfg.rowSpacing);
+      setSpacingPlant(cfg.plantSpacing);
+      setApplicationMode(cfg.defaultMode);
+    } else {
+      setSpacingRow(0.50);
+      setSpacingPlant(0.25);
+    }
+  };
 
   // Estratégia de Escolha dos Adubos (Formulados NPK vs Matérias-Primas Simples vs Personalizado)
   const [strategy, setStrategy] = useState<'formulado' | 'simples' | 'custom'>('formulado');
@@ -176,24 +296,66 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
   const kPlantioAlvo = isPerennial ? 0 : Math.min(30, Math.round(kDemanda * 0.3));
   const kCobAlvo = kDemanda - kPlantioAlvo;
 
-  // 2. Cálculo dos Adubos Selecionados conforme as Garantias Oficiais do MAPA (IAC 208)
-  const commercialItems: {
+  // 2. Cálculos Operacionais de Espaçamento e População de Plantas
+  const safeRow = spacingRow > 0 ? spacingRow : 0.50;
+  const safePlant = spacingPlant > 0 ? spacingPlant : 0.25;
+
+  // Metros lineares totais
+  const linearMetersPerHa = Math.round(10000 / safeRow);
+  const totalLinearMetersPlot = Math.round(linearMetersPerHa * plotArea);
+
+  // População de plantas (plantas/ha e total talhão)
+  const areaPerPlant = Number((safeRow * safePlant).toFixed(3));
+  const plantsPerHa = Math.round(10000 / (areaPerPlant > 0 ? areaPerPlant : 0.125));
+  const totalPlantsPlot = Math.round(plantsPerHa * plotArea);
+
+  // Helper para criar item comercial com todas as métricas: hectare, linear e por planta
+  const createCommercialItem = (params: {
     timing: 'Plantio' | 'Cobertura';
     name: string;
     chemicalFormula: string;
     guaranteeText: string;
     doseKgHa: number;
-    bags50kgHa: number;
-    totalKg: number;
-    totalBags50kg: number;
-    bigBags1000kg: number;
     nSupplied: number;
     pSupplied: number;
     kSupplied: number;
     caSupplied: number;
     sSupplied: number;
     explanation: string;
-  }[] = [];
+  }) => {
+    const doseKgHa = params.doseKgHa;
+    const bags50kgHa = Number((doseKgHa / 50).toFixed(1));
+    const totalKg = Math.round(doseKgHa * plotArea);
+    const totalBags50kg = Math.ceil(totalKg / 50);
+    const bigBags1000kg = Number((totalKg / 1000).toFixed(1));
+
+    // Cálculos por Metro Linear:
+    // Dose (g/m) = (kg/ha * 1000) / (10000 / safeRow) = (kg/ha * safeRow) / 10
+    const doseGramsPerMeter = Number(((doseKgHa * safeRow) / 10).toFixed(1));
+    // Teste prático de 10 metros para calibração com saquinho plástico na plantadeira
+    const doseGramsPer10Meters = Number((doseGramsPerMeter * 10).toFixed(1));
+
+    // Cálculos por Planta / Cova:
+    // Dose (g/planta) = (kg/ha * 1000) / plantsPerHa
+    const doseGramsPerPlant = Number(((doseKgHa * 1000) / (plantsPerHa || 1)).toFixed(1));
+    const doseGramsPerSplit = Number((doseGramsPerPlant / (splitApplications || 1)).toFixed(1));
+
+    return {
+      ...params,
+      bags50kgHa,
+      totalKg,
+      totalBags50kg,
+      bigBags1000kg,
+      doseGramsPerMeter,
+      doseGramsPer10Meters,
+      doseGramsPerPlant,
+      doseGramsPerSplit
+    };
+  };
+
+  // 3. Montagem dos Adubos Selecionados conforme as Garantias Oficiais do MAPA (IAC 208)
+  type CommercialItem = ReturnType<typeof createCommercialItem>;
+  const commercialItems: CommercialItem[] = [];
 
   if (strategy === 'formulado') {
     // A) Formulação NPK no sulco de plantio
@@ -208,23 +370,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
     const caFromNpk = Math.round(doseNpkHa * ((npkFert.caPercent || 0) / 100));
     const sFromNpk = Math.round(doseNpkHa * ((npkFert.sPercent || 0) / 100));
 
-    commercialItems.push({
-      timing: 'Plantio',
-      name: npkFert.name,
-      chemicalFormula: npkFert.formulaChemical,
-      guaranteeText: `${npkFert.nPercent}-${npkFert.p2o5Percent}-${npkFert.k2oPercent}${npkFert.sPercent ? ` + ${npkFert.sPercent}%S` : ''}${npkFert.caPercent ? ` + ${npkFert.caPercent}%Ca` : ''}`,
-      doseKgHa: doseNpkHa,
-      bags50kgHa: Number((doseNpkHa / 50).toFixed(1)),
-      totalKg: Math.round(doseNpkHa * plotArea),
-      totalBags50kg: Math.ceil((doseNpkHa * plotArea) / 50),
-      bigBags1000kg: Number(((doseNpkHa * plotArea) / 1000).toFixed(1)),
-      nSupplied: nFromNpk,
-      pSupplied: pFromNpk,
-      kSupplied: kFromNpk,
-      caSupplied: caFromNpk,
-      sSupplied: sFromNpk,
-      explanation: `Atende 100% do Fósforo (${pFromNpk} kg/ha P₂O₅) e supre o arranque inicial de N e K.`
-    });
+    commercialItems.push(
+      createCommercialItem({
+        timing: 'Plantio',
+        name: npkFert.name,
+        chemicalFormula: npkFert.formulaChemical,
+        guaranteeText: `${npkFert.nPercent}-${npkFert.p2o5Percent}-${npkFert.k2oPercent}${npkFert.sPercent ? ` + ${npkFert.sPercent}%S` : ''}${npkFert.caPercent ? ` + ${npkFert.caPercent}%Ca` : ''}`,
+        doseKgHa: doseNpkHa,
+        nSupplied: nFromNpk,
+        pSupplied: pFromNpk,
+        kSupplied: kFromNpk,
+        caSupplied: caFromNpk,
+        sSupplied: sFromNpk,
+        explanation: `Atende 100% do Fósforo (${pFromNpk} kg/ha P₂O₅) e supre o arranque inicial de N e K.`
+      })
+    );
 
     // B) Nitrogênio em Cobertura (descontando o que já veio do NPK de plantio)
     const nFaltaCob = Math.max(0, nDemanda - nFromNpk);
@@ -234,23 +394,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
       const doseNHa = Math.round(nFaltaCob / nPercent);
       const sFromN = Math.round(doseNHa * ((nFert.sPercent || 0) / 100));
 
-      commercialItems.push({
-        timing: 'Cobertura',
-        name: nFert.name,
-        chemicalFormula: nFert.formulaChemical,
-        guaranteeText: `${nFert.nPercent}% N${nFert.sPercent ? ` + ${nFert.sPercent}% S` : ''}`,
-        doseKgHa: doseNHa,
-        bags50kgHa: Number((doseNHa / 50).toFixed(1)),
-        totalKg: Math.round(doseNHa * plotArea),
-        totalBags50kg: Math.ceil((doseNHa * plotArea) / 50),
-        bigBags1000kg: Number(((doseNHa * plotArea) / 1000).toFixed(1)),
-        nSupplied: nFaltaCob,
-        pSupplied: 0,
-        kSupplied: 0,
-        caSupplied: 0,
-        sSupplied: sFromN,
-        explanation: `Complementa a exigência vegetativa de Nitrogênio (${nFaltaCob} kg/ha de N).`
-      });
+      commercialItems.push(
+        createCommercialItem({
+          timing: 'Cobertura',
+          name: nFert.name,
+          chemicalFormula: nFert.formulaChemical,
+          guaranteeText: `${nFert.nPercent}% N${nFert.sPercent ? ` + ${nFert.sPercent}% S` : ''}`,
+          doseKgHa: doseNHa,
+          nSupplied: nFaltaCob,
+          pSupplied: 0,
+          kSupplied: 0,
+          caSupplied: 0,
+          sSupplied: sFromN,
+          explanation: `Complementa a exigência vegetativa de Nitrogênio (${nFaltaCob} kg/ha de N).`
+        })
+      );
     }
 
     // C) Potássio em Cobertura (descontando o que veio do NPK de plantio)
@@ -261,23 +419,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
       const doseKHa = Math.round(kFaltaCob / kPercent);
       const sFromK = Math.round(doseKHa * ((kFert.sPercent || 0) / 100));
 
-      commercialItems.push({
-        timing: 'Cobertura',
-        name: kFert.name,
-        chemicalFormula: kFert.formulaChemical,
-        guaranteeText: `${kFert.k2oPercent}% K₂O${kFert.sPercent ? ` + ${kFert.sPercent}% S` : ''}`,
-        doseKgHa: doseKHa,
-        bags50kgHa: Number((doseKHa / 50).toFixed(1)),
-        totalKg: Math.round(doseKHa * plotArea),
-        totalBags50kg: Math.ceil((doseKHa * plotArea) / 50),
-        bigBags1000kg: Number(((doseKHa * plotArea) / 1000).toFixed(1)),
-        nSupplied: 0,
-        pSupplied: 0,
-        kSupplied: kFaltaCob,
-        caSupplied: 0,
-        sSupplied: sFromK,
-        explanation: `Suprimento potássico para enchimento de grãos/frutos (${kFaltaCob} kg/ha de K₂O).`
-      });
+      commercialItems.push(
+        createCommercialItem({
+          timing: 'Cobertura',
+          name: kFert.name,
+          chemicalFormula: kFert.formulaChemical,
+          guaranteeText: `${kFert.k2oPercent}% K₂O${kFert.sPercent ? ` + ${kFert.sPercent}% S` : ''}`,
+          doseKgHa: doseKHa,
+          nSupplied: 0,
+          pSupplied: 0,
+          kSupplied: kFaltaCob,
+          caSupplied: 0,
+          sSupplied: sFromK,
+          explanation: `Suprimento potássico para enchimento de grãos/frutos (${kFaltaCob} kg/ha de K₂O).`
+        })
+      );
     }
   } else {
     // ESTRATÉGIA MATÉRIAS-PRIMAS SIMPLES (MAP / Super Simples + KCl + Ureia)
@@ -290,23 +446,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
     const caFromP = Math.round(dosePHa * ((pFert.caPercent || 0) / 100));
     const sFromP = Math.round(dosePHa * ((pFert.sPercent || 0) / 100));
 
-    commercialItems.push({
-      timing: 'Plantio',
-      name: pFert.name,
-      chemicalFormula: pFert.formulaChemical,
-      guaranteeText: `${pFert.p2o5Percent}% P₂O₅${pFert.nPercent ? ` + ${pFert.nPercent}% N` : ''}${pFert.sPercent ? ` + ${pFert.sPercent}% S` : ''}${pFert.caPercent ? ` + ${pFert.caPercent}% Ca` : ''}`,
-      doseKgHa: dosePHa,
-      bags50kgHa: Number((dosePHa / 50).toFixed(1)),
-      totalKg: Math.round(dosePHa * plotArea),
-      totalBags50kg: Math.ceil((dosePHa * plotArea) / 50),
-      bigBags1000kg: Number(((dosePHa * plotArea) / 1000).toFixed(1)),
-      nSupplied: nFromP,
-      pSupplied: pFromP,
-      kSupplied: 0,
-      caSupplied: caFromP,
-      sSupplied: sFromP,
-      explanation: `Fornece ${pFromP} kg/ha de P₂O₅ solúvel no sulco de plantio.`
-    });
+    commercialItems.push(
+      createCommercialItem({
+        timing: 'Plantio',
+        name: pFert.name,
+        chemicalFormula: pFert.formulaChemical,
+        guaranteeText: `${pFert.p2o5Percent}% P₂O₅${pFert.nPercent ? ` + ${pFert.nPercent}% N` : ''}${pFert.sPercent ? ` + ${pFert.sPercent}% S` : ''}${pFert.caPercent ? ` + ${pFert.caPercent}% Ca` : ''}`,
+        doseKgHa: dosePHa,
+        nSupplied: nFromP,
+        pSupplied: pFromP,
+        kSupplied: 0,
+        caSupplied: caFromP,
+        sSupplied: sFromP,
+        explanation: `Fornece ${pFromP} kg/ha de P₂O₅ solúvel no sulco de plantio.`
+      })
+    );
 
     // B) Nitrogênio Total (descontando o que veio do MAP/DAP se houver)
     const nFalta = Math.max(0, nDemanda - nFromP);
@@ -316,23 +470,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
       const doseNHa = Math.round(nFalta / nPerc);
       const sFromN = Math.round(doseNHa * ((nFert.sPercent || 0) / 100));
 
-      commercialItems.push({
-        timing: 'Cobertura',
-        name: nFert.name,
-        chemicalFormula: nFert.formulaChemical,
-        guaranteeText: `${nFert.nPercent}% N${nFert.sPercent ? ` + ${nFert.sPercent}% S` : ''}`,
-        doseKgHa: doseNHa,
-        bags50kgHa: Number((doseNHa / 50).toFixed(1)),
-        totalKg: Math.round(doseNHa * plotArea),
-        totalBags50kg: Math.ceil((doseNHa * plotArea) / 50),
-        bigBags1000kg: Number(((doseNHa * plotArea) / 1000).toFixed(1)),
-        nSupplied: nFalta,
-        pSupplied: 0,
-        kSupplied: 0,
-        caSupplied: 0,
-        sSupplied: sFromN,
-        explanation: `Aplicação parcelada em estádios de maior absorção foliar.`
-      });
+      commercialItems.push(
+        createCommercialItem({
+          timing: 'Cobertura',
+          name: nFert.name,
+          chemicalFormula: nFert.formulaChemical,
+          guaranteeText: `${nFert.nPercent}% N${nFert.sPercent ? ` + ${nFert.sPercent}% S` : ''}`,
+          doseKgHa: doseNHa,
+          nSupplied: nFalta,
+          pSupplied: 0,
+          kSupplied: 0,
+          caSupplied: 0,
+          sSupplied: sFromN,
+          explanation: `Aplicação parcelada em estádios de maior absorção foliar.`
+        })
+      );
     }
 
     // C) Potássio Total
@@ -342,23 +494,21 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
       const doseKHa = Math.round(kDemanda / kPerc);
       const sFromK = Math.round(doseKHa * ((kFert.sPercent || 0) / 100));
 
-      commercialItems.push({
-        timing: kCobAlvo > 0 ? 'Cobertura' : 'Plantio',
-        name: kFert.name,
-        chemicalFormula: kFert.formulaChemical,
-        guaranteeText: `${kFert.k2oPercent}% K₂O${kFert.sPercent ? ` + ${kFert.sPercent}% S` : ''}`,
-        doseKgHa: doseKHa,
-        bags50kgHa: Number((doseKHa / 50).toFixed(1)),
-        totalKg: Math.round(doseKHa * plotArea),
-        totalBags50kg: Math.ceil((doseKHa * plotArea) / 50),
-        bigBags1000kg: Number(((doseKHa * plotArea) / 1000).toFixed(1)),
-        nSupplied: 0,
-        pSupplied: 0,
-        kSupplied: kDemanda,
-        caSupplied: 0,
-        sSupplied: sFromK,
-        explanation: `Atende os ${kDemanda} kg/ha de K₂O exigidos pela cultura.`
-      });
+      commercialItems.push(
+        createCommercialItem({
+          timing: kCobAlvo > 0 ? 'Cobertura' : 'Plantio',
+          name: kFert.name,
+          chemicalFormula: kFert.formulaChemical,
+          guaranteeText: `${kFert.k2oPercent}% K₂O${kFert.sPercent ? ` + ${kFert.sPercent}% S` : ''}`,
+          doseKgHa: doseKHa,
+          nSupplied: 0,
+          pSupplied: 0,
+          kSupplied: kDemanda,
+          caSupplied: 0,
+          sSupplied: sFromK,
+          explanation: `Atende os ${kDemanda} kg/ha de K₂O exigidos pela cultura.`
+        })
+      );
     }
   }
 
@@ -420,12 +570,7 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
             </label>
             <select
               value={crop}
-              onChange={(e) => {
-                setCrop(e.target.value);
-                const opts = CROP_YIELD_TARGETS[e.target.value];
-                if (opts && opts[1]) setSelectedYieldKey(opts[1].key);
-                else if (opts && opts[0]) setSelectedYieldKey(opts[0].key);
-              }}
+              onChange={(e) => handleCropChange(e.target.value)}
               className="text-xs font-bold px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#2F7D32]/20 focus:border-[#2F7D32] bg-white text-gray-900 shadow-2xs cursor-pointer"
             >
               {availableCrops.map((c) => (
@@ -520,6 +665,220 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
           <div className="mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-600 flex justify-between">
             <span>Plantio: {kPlantioAlvo} kg/ha</span>
             <span className="font-bold text-emerald-700">Cobertura: {kCobAlvo} kg/ha</span>
+          </div>
+        </div>
+      </div>
+
+      {/* MODO DE APLICAÇÃO & REGULAGEM DE CAMPO (METRO LINEAR, PLANTA/COVA, HECTARE) */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-gray-100 gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="p-1.5 rounded-lg bg-emerald-100 text-[#173F2B]">
+                <Calculator className="w-4 h-4 text-[#2F7D32]" />
+              </span>
+              <h3 className="text-base font-extrabold text-gray-900 tracking-tight">
+                Modo de Aplicação & Regulagem da Lavoura
+              </h3>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Defina o espaçamento do plantio para calcular automaticamente a população de plantas, metros de sulco e a dose por metro linear ou por cova.
+            </p>
+          </div>
+
+          {/* Seletor de Modo de Aplicação */}
+          <div className="grid grid-cols-3 p-1 bg-gray-100 rounded-xl gap-1 shrink-0">
+            <button
+              onClick={() => setApplicationMode('hectare')}
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                applicationMode === 'hectare'
+                  ? 'bg-white text-[#173F2B] shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <Wheat className="w-3.5 h-3.5" />
+              <span>Por Hectare (kg/ha)</span>
+            </button>
+
+            <button
+              onClick={() => setApplicationMode('linear')}
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                applicationMode === 'linear'
+                  ? 'bg-white text-[#173F2B] shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <Ruler className="w-3.5 h-3.5" />
+              <span>Metro Linear (g/m)</span>
+            </button>
+
+            <button
+              onClick={() => setApplicationMode('planta')}
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                applicationMode === 'planta'
+                  ? 'bg-white text-[#173F2B] shadow-xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <Trees className="w-3.5 h-3.5" />
+              <span>Por Planta (g/planta)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Configuração de Espaçamento e População de Plantas */}
+        <div className="bg-[#F8FAF8] rounded-xl border border-gray-200 p-4 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-5">
+              {/* Espaçamento entre Linhas / Ruas */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-[#2F7D32]" />
+                  <span>Espaçamento entre Linhas / Ruas (E₁)</span>
+                </label>
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.20"
+                      max="10.0"
+                      value={spacingRow}
+                      onChange={(e) => setSpacingRow(Math.max(0.1, parseFloat(e.target.value) || 0.5))}
+                      className="w-24 text-xs font-bold px-3 py-2 rounded-xl border border-gray-300 bg-white text-gray-900 shadow-2xs focus:ring-2 focus:ring-[#2F7D32]/20"
+                    />
+                    <span className="absolute right-3 top-2 text-xs font-bold text-gray-400">m</span>
+                  </div>
+                  {/* Atalhos Rápidos */}
+                  <div className="flex items-center gap-1">
+                    {[0.45, 0.50, 0.76, 0.90, 1.40, 3.00].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setSpacingRow(val)}
+                        className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                          spacingRow === val
+                            ? 'bg-[#173F2B] text-white border-[#173F2B]'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {val}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Espaçamento entre Plantas */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center gap-1.5">
+                  <Trees className="w-3.5 h-3.5 text-[#2F7D32]" />
+                  <span>Espaçamento entre Plantas na Linha (E₂)</span>
+                </label>
+                <div className="flex items-center space-x-2">
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.02"
+                      min="0.05"
+                      max="10.0"
+                      value={spacingPlant}
+                      onChange={(e) => setSpacingPlant(Math.max(0.01, parseFloat(e.target.value) || 0.25))}
+                      className="w-24 text-xs font-bold px-3 py-2 rounded-xl border border-gray-300 bg-white text-gray-900 shadow-2xs focus:ring-2 focus:ring-[#2F7D32]/20"
+                    />
+                    <span className="absolute right-3 top-2 text-xs font-bold text-gray-400">m</span>
+                  </div>
+                  {/* Atalhos Rápidos */}
+                  <div className="flex items-center gap-1">
+                    {[0.08, 0.10, 0.28, 0.80, 1.00, 2.00, 3.00].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setSpacingPlant(val)}
+                        className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                          spacingPlant === val
+                            ? 'bg-[#173F2B] text-white border-[#173F2B]'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {val}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Parcelamentos para aplicação por planta */}
+              {applicationMode === 'planta' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Nº de Aplicações / Parcelas</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4].map((num) => (
+                      <button
+                        key={num}
+                        onClick={() => setSplitApplications(num)}
+                        className={`text-xs font-bold px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+                          splitApplications === num
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {num}x {num === 1 ? 'única' : 'vezes'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Botão de Restaurar Padrão da Cultura */}
+            <div className="flex items-center shrink-0">
+              <button
+                onClick={handleResetCropSpacing}
+                className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
+                title="Redefinir espaçamento recomendado para esta cultura"
+              >
+                <span>Restaurar Padrão de {crop}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Cards de Métricas de Campo em Tempo Real */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-gray-200/70">
+            <div className={`p-3 rounded-xl border shadow-2xs transition-all ${
+              applicationMode === 'linear' ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500/20' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-gray-400 block">Metros Lineares / ha</span>
+                {applicationMode === 'linear' && <span className="text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.5 rounded">Ativo</span>}
+              </div>
+              <span className="text-base font-black text-gray-900 block mt-0.5">{linearMetersPerHa.toLocaleString('pt-BR')} m</span>
+              <span className="text-[10px] text-gray-500 block">10.000m² / {safeRow}m de entrelinha</span>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+              <span className="text-[10px] uppercase font-bold text-gray-400 block">Total de Sulco no Talhão</span>
+              <span className="text-base font-black text-emerald-800 block mt-0.5">{totalLinearMetersPlot.toLocaleString('pt-BR')} m</span>
+              <span className="text-[10px] text-gray-500 block">em {plotArea} hectares</span>
+            </div>
+
+            <div className={`p-3 rounded-xl border shadow-2xs transition-all ${
+              applicationMode === 'planta' ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500/20' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-gray-400 block">População Calculada</span>
+                {applicationMode === 'planta' && <span className="text-[9px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded">Ativo</span>}
+              </div>
+              <span className="text-base font-black text-gray-900 block mt-0.5">{plantsPerHa.toLocaleString('pt-BR')}</span>
+              <span className="text-[10px] text-gray-500 block">plantas/ha ({areaPerPlant} m²/planta)</span>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs">
+              <span className="text-[10px] uppercase font-bold text-gray-400 block">Total de Plantas / Covas</span>
+              <span className="text-base font-black text-blue-700 block mt-0.5">{totalPlantsPlot.toLocaleString('pt-BR')}</span>
+              <span className="text-[10px] text-gray-500 block">plantas em {plotArea} ha</span>
+            </div>
           </div>
         </div>
       </div>
@@ -671,20 +1030,101 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
           </div>
         )}
 
+        {/* Cabeçalho de Controle da Tabela e Alternância Rápida de Visão */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+              Exibição dos Dados na Tabela:
+            </span>
+            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
+              applicationMode === 'linear'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                : applicationMode === 'planta'
+                ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                : 'bg-gray-100 text-gray-800 border border-gray-300'
+            }`}>
+              {applicationMode === 'linear' && `📏 Metro Linear (${safeRow}m de entrelinha)`}
+              {applicationMode === 'planta' && `🌳 Por Planta (${plantsPerHa.toLocaleString('pt-BR')} pl/ha • ${splitApplications}x)`}
+              {applicationMode === 'hectare' && `🌾 Área Total (Dose por Hectare & Big Bags)`}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 self-start sm:self-auto bg-gray-100 p-1 rounded-xl">
+            <button
+              onClick={() => setApplicationMode('hectare')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                applicationMode === 'hectare'
+                  ? 'bg-white text-[#173F2B] shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              Hectare
+            </button>
+            <button
+              onClick={() => setApplicationMode('linear')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                applicationMode === 'linear'
+                  ? 'bg-white text-[#173F2B] shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              Metro Linear
+            </button>
+            <button
+              onClick={() => setApplicationMode('planta')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                applicationMode === 'planta'
+                  ? 'bg-white text-[#173F2B] shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              Por Planta
+            </button>
+          </div>
+        </div>
+
         {/* Tabela de Produtos Comerciais e Quantidades Calculadas */}
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-2xs">
           <table className="w-full text-xs text-left">
             <thead className="bg-gray-50 border-b border-gray-200 text-gray-700 font-bold uppercase text-[10px]">
-              <tr>
-                <th className="p-3">Momento</th>
-                <th className="p-3">Adubo Comercial (MAPA)</th>
-                <th className="p-3">Fórmula Química</th>
-                <th className="p-3">Garantia Oficial</th>
-                <th className="p-3">Dose (kg/ha)</th>
-                <th className="p-3">Sacos 50kg / ha</th>
-                <th className="p-3">Total Talhão ({plotArea} ha)</th>
-                <th className="p-3">Big Bags (1.000 kg)</th>
-              </tr>
+              {applicationMode === 'hectare' && (
+                <tr>
+                  <th className="p-3">Momento</th>
+                  <th className="p-3">Adubo Comercial (MAPA)</th>
+                  <th className="p-3">Fórmula Química</th>
+                  <th className="p-3">Garantia Oficial</th>
+                  <th className="p-3">Dose (kg/ha)</th>
+                  <th className="p-3">Sacos 50kg / ha</th>
+                  <th className="p-3">Total Talhão ({plotArea} ha)</th>
+                  <th className="p-3">Big Bags (1.000 kg)</th>
+                </tr>
+              )}
+
+              {applicationMode === 'linear' && (
+                <tr>
+                  <th className="p-3">Momento</th>
+                  <th className="p-3">Adubo Comercial (MAPA)</th>
+                  <th className="p-3">Garantia Oficial</th>
+                  <th className="p-3">Dose Base (kg/ha)</th>
+                  <th className="p-3 bg-emerald-100/60 text-emerald-950 font-black">Dose Linear (g/m)</th>
+                  <th className="p-3 bg-emerald-200/70 text-emerald-950 font-black">Teste Calibração 10m (g)</th>
+                  <th className="p-3">Total Talhão ({plotArea} ha)</th>
+                  <th className="p-3">Regulagem da Máquina</th>
+                </tr>
+              )}
+
+              {applicationMode === 'planta' && (
+                <tr>
+                  <th className="p-3">Momento</th>
+                  <th className="p-3">Adubo Comercial (MAPA)</th>
+                  <th className="p-3">Garantia Oficial</th>
+                  <th className="p-3">Dose Base (kg/ha)</th>
+                  <th className="p-3 bg-blue-50 text-blue-950 font-black">Dose Total (g/planta)</th>
+                  <th className="p-3">Parcelamento</th>
+                  <th className="p-3 bg-blue-100 text-blue-950 font-black">Dose / Aplicação (g/planta)</th>
+                  <th className="p-3">Total Talhão ({plotArea} ha)</th>
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-gray-100 text-gray-800">
               {commercialItems.map((item, idx) => (
@@ -697,21 +1137,130 @@ export const FertilizationView: React.FC<FertilizationViewProps> = ({
                     </span>
                   </td>
                   <td className="p-3 font-extrabold text-gray-900">{item.name}</td>
-                  <td className="p-3 font-mono text-[11px] text-gray-500">{item.chemicalFormula}</td>
-                  <td className="p-3 font-mono font-bold text-emerald-800">{item.guaranteeText}</td>
-                  <td className="p-3 font-extrabold text-gray-900">{item.doseKgHa} kg/ha</td>
-                  <td className="p-3 text-gray-600 font-semibold">{item.bags50kgHa} sc/ha</td>
-                  <td className="p-3 font-extrabold text-[#173F2B]">
-                    {item.totalKg.toLocaleString('pt-BR')} kg ({item.totalBags50kg} sc)
-                  </td>
-                  <td className="p-3 font-mono font-bold text-amber-800">
-                    {item.bigBags1000kg} BB
-                  </td>
+
+                  {applicationMode === 'hectare' && (
+                    <>
+                      <td className="p-3 font-mono text-[11px] text-gray-500">{item.chemicalFormula}</td>
+                      <td className="p-3 font-mono font-bold text-emerald-800">{item.guaranteeText}</td>
+                      <td className="p-3 font-extrabold text-gray-900">{item.doseKgHa} kg/ha</td>
+                      <td className="p-3 text-gray-600 font-semibold">{item.bags50kgHa} sc/ha</td>
+                      <td className="p-3 font-extrabold text-[#173F2B]">
+                        {item.totalKg.toLocaleString('pt-BR')} kg ({item.totalBags50kg} sc)
+                      </td>
+                      <td className="p-3 font-mono font-bold text-amber-800">
+                        {item.bigBags1000kg} BB
+                      </td>
+                    </>
+                  )}
+
+                  {applicationMode === 'linear' && (
+                    <>
+                      <td className="p-3 font-mono font-bold text-emerald-800">{item.guaranteeText}</td>
+                      <td className="p-3 text-gray-600">{item.doseKgHa} kg/ha</td>
+                      <td className="p-3 bg-emerald-50/50 font-black text-emerald-900 text-sm">
+                        {item.doseGramsPerMeter} g/m
+                      </td>
+                      <td className="p-3 bg-emerald-100/60 font-black text-emerald-950 text-sm">
+                        <span className="inline-flex items-center gap-1">
+                          <span>{item.doseGramsPer10Meters} g</span>
+                          <span className="text-[10px] text-emerald-700 font-normal">/ 10 metros</span>
+                        </span>
+                      </td>
+                      <td className="p-3 font-extrabold text-[#173F2B]">
+                        {item.totalKg.toLocaleString('pt-BR')} kg ({item.totalBags50kg} sc)
+                      </td>
+                      <td className="p-3 text-[11px] text-gray-600">
+                        {item.timing === 'Plantio' ? 'Rosca no sulco sob semente' : 'Adubador lateral em entrelinha'}
+                      </td>
+                    </>
+                  )}
+
+                  {applicationMode === 'planta' && (
+                    <>
+                      <td className="p-3 font-mono font-bold text-emerald-800">{item.guaranteeText}</td>
+                      <td className="p-3 text-gray-600">{item.doseKgHa} kg/ha</td>
+                      <td className="p-3 bg-blue-50 font-black text-blue-900 text-sm">
+                        {item.doseGramsPerPlant} g/planta
+                      </td>
+                      <td className="p-3 font-bold text-gray-700">
+                        {splitApplications}x no ciclo
+                      </td>
+                      <td className="p-3 bg-blue-100 font-black text-blue-950 text-sm">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-white text-blue-900 border border-blue-300 font-black">
+                            {item.doseGramsPerSplit} g
+                          </span>
+                          <span className="text-[10px] text-blue-800 font-semibold">copo dosador</span>
+                        </span>
+                      </td>
+                      <td className="p-3 font-extrabold text-[#173F2B]">
+                        {item.totalKg.toLocaleString('pt-BR')} kg ({item.totalBags50kg} sc)
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Card Operacional de Orientação Prática de Campo */}
+        {applicationMode === 'linear' && (
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Ruler className="w-5 h-5 text-emerald-100" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-emerald-950 flex items-center gap-2">
+                  <span>Procedimento de Calibração da Plantadeira (Teste de 10 Metros)</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-bold">Instrução Agronômica</span>
+                </h4>
+                <p className="text-emerald-800 leading-relaxed text-[11px]">
+                  <strong>1.</strong> Amarre um saquinho plástico em uma ou mais bicas de adubo da plantadeira. • <strong>2.</strong> Percorra com o trator na velocidade e rotação reais de trabalho exatamente <strong>10 metros lineares</strong>. • <strong>3.</strong> Pese na balança digital: a quantidade recolhida deve ser exatamente <strong>{commercialItems[0]?.doseGramsPer10Meters || 0} g</strong> para adubo de plantio. • <strong>4.</strong> Ajuste a abertura da rosca ou carretel até conferir a dosagem em todas as linhas.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {applicationMode === 'planta' && (
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Trees className="w-5 h-5 text-blue-100" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-blue-950 flex items-center gap-2">
+                  <span>Procedimento de Adubação por Planta / Cova (Copo Dosador)</span>
+                  <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full font-bold">Instrução Agronômica</span>
+                </h4>
+                <p className="text-blue-800 leading-relaxed text-[11px]">
+                  <strong>1.</strong> Corte ou regule um copo plástico com a marcação exata da dose por aplicação (ex: <strong>{commercialItems[0]?.doseGramsPerSplit || 0} g/planta</strong>). • <strong>2.</strong> Aplique em círculo ou meia-lua sob a projeção da copa (saia da planta), onde ficam as raízes que absorvem nutrientes. • <strong>3.</strong> Nunca jogue encostado no tronco ou colo da planta para evitar queima química. • <strong>4.</strong> Realize as {splitApplications} aplicações distribuídas nos períodos de chuva ou irrigação.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {applicationMode === 'hectare' && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+            <div className="flex items-start space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-[#173F2B] text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Boxes className="w-5 h-5 text-emerald-300" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-gray-900 flex items-center gap-2">
+                  <span>Logística, Compra & Armazenamento ({plotArea} ha)</span>
+                  <span className="text-[10px] bg-gray-200 text-gray-800 px-2 py-0.5 rounded-full font-bold">Planejamento da Fazenda</span>
+                </h4>
+                <p className="text-gray-600 leading-relaxed text-[11px]">
+                  Para o talhão de {plotArea} ha, a compra em <strong>Big Bags de 1.000 kg</strong> reduz perdas por rompimento de sacos e agiliza o abastecimento com guincho bagzeiro. Em caso de aplicação manual, priorize <strong>sacos de 50 kg</strong>. Mantenha os adubos armazenados em galpão coberto e sobre paletes de madeira para evitar empedramento por umidade do solo.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Balanço Nutricional e Aporte de Nutrientes Secundários */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
