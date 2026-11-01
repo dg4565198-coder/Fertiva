@@ -664,9 +664,6 @@ export function calculateFertilization(
 
   const cropName = rule.cropName;
   const refSource = sourceTitle;
-    p2o5Plantio = p2o5Total;
-    k2oPlantio = 20; k2oCob = 40;
-  }
 
   const commercialPlan: CommercialFertilizerItem[] = [];
 
