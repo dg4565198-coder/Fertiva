@@ -75,10 +75,25 @@ export interface SoilSample {
   znMgDm3?: number;
 }
 
+export interface CropAgronomicRule {
+  id: string;
+  cropName: string;
+  category: 'grão' | 'perene' | 'raiz' | 'hortaliça' | 'pastagem' | 'florestal' | 'outros';
+  targetV: number;              // V% meta para calagem (ex: 70% milho/soja, 60% café, 50% mandioca, 80% citros)
+  targetYield: string;          // Ex: "Alta (8 a 10 t/ha)", "40 sc/ha"
+  nDemandKgHa: number;          // Ex: 120
+  pDemandKgHa: number;          // Ex: 80
+  kDemandKgHa: number;          // Ex: 90
+  suggestedFormulation?: string;// Ex: "04-14-08", "20-05-20", "00-20-00"
+  gypsumFactor?: number;        // 50 anual, 60 perene
+  notes?: string;
+}
+
 export interface TechnicalReference {
   id: string;
   code: string;
   title: string;
+  author?: string;
   institution: string;
   year: number;
   status: string;
@@ -86,7 +101,10 @@ export interface TechnicalReference {
   notes: string;
   officialUrl: string;
   institutionUrl: string;
-  docType: 'Manual Oficial' | 'Boletim Técnico' | 'Circular Técnica' | 'Guia Estadual';
+  docType: 'Manual Oficial' | 'Boletim Técnico' | 'Circular Técnica' | 'Guia Estadual' | 'Livro Técnico';
+  cropsCovered: string[];        // Lista de culturas atendidas pelo livro
+  cropRules?: CropAgronomicRule[]; // Parâmetros agronômicos específicos por cultura
+  isCustom?: boolean;            // Indicador se foi cadastrado pelo operador do sistema
 }
 
 export interface DerivedIndices {
