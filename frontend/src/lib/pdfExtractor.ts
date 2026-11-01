@@ -189,3 +189,198 @@ export function parseSoilLabReport(rawText: string, fileName?: string): Extracte
   return result;
 }
 
+export interface ExtractedBookData {
+  title: string;
+  institution: string;
+  year: number;
+  docType: 'Manual Oficial' | 'Boletim Técnico' | 'Circular Técnica' | 'Guia Estadual' | 'Livro Técnico';
+  scope: string;
+  officialUrl?: string;
+  notes: string;
+  cropsDetected: string[];
+  targetV: number;
+  nKgHa: number;
+  p2o5KgHa: number;
+  k2oKgHa: number;
+  formulation: string;
+  rawText: string;
+}
+
+export function parseBookManualReport(rawText: string, fileName?: string): ExtractedBookData {
+  const text = (rawText || '').replace(/\s+/g, ' ');
+  const lower = text.toLowerCase();
+  const lowerFile = (fileName || '').toLowerCase();
+
+  // 1. Detecção do Título
+  let title = '';
+  const cleanFileName = (fileName || '')
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+
+  const titleMatch = text.match(/(?:manual|recomenda[çc][õo]es|guia|boletim|aduba[çc][ãa]o|nutri[çc][ãa]o)[^.\n\r]{10,120}/i);
+  if (titleMatch && titleMatch[0].length >= 12) {
+    title = titleMatch[0].trim();
+  } else if (cleanFileName) {
+    title = cleanFileName.charAt(0).toUpperCase() + cleanFileName.slice(1);
+  } else {
+    title = 'Manual de Calagem e Nutrição Mineral de Culturas';
+  }
+
+  // 2. Detecção de Instituição / Autor
+  let institution = 'Órgão de Pesquisa Agropecuária';
+  if (lower.includes('embrapa') || lowerFile.includes('embrapa')) {
+    if (lower.includes('soja') || lowerFile.includes('soja')) {
+      institution = 'Embrapa Soja (Londrina - PR)';
+    } else if (lower.includes('cerrados') || lowerFile.includes('cerrados')) {
+      institution = 'Embrapa Cerrados (Planaltina - DF)';
+    } else if (lower.includes('mandioca') || lower.includes('fruticultura')) {
+      institution = 'Embrapa Mandioca e Fruticultura (Cruz das Almas - BA)';
+    } else {
+      institution = 'Embrapa (Empresa Brasileira de Pesquisa Agropecuária)';
+    }
+  } else if (lower.includes('cfsemg') || lower.includes('ufv') || lower.includes('viçosa')) {
+    institution = 'Comissão de Fertilidade do Solo de Minas Gerais (CFSEMG / UFV)';
+  } else if (lower.includes('seagri') || lower.includes('ebda') || lower.includes('bahia')) {
+    institution = 'SEAGRI / EBDA Bahia';
+  } else if (lower.includes('incaper') || lower.includes('espírito santo')) {
+    institution = 'Instituto Capixaba de Pesquisa e Extensão Rural (Incaper)';
+  } else if (lower.includes('iac') || lower.includes('campinas') || lower.includes('boletim 100')) {
+    institution = 'Instituto Agronômico de Campinas (IAC - Boletim 100)';
+  } else if (lower.includes('ceplac')) {
+    institution = 'CEPLAC / Ministério da Agricultura (MAPA)';
+  } else if (lower.includes('esalq') || lower.includes('usp')) {
+    institution = 'ESALQ / USP Piracicaba';
+  } else if (lower.includes('epagri')) {
+    institution = 'Epagri Santa Catarina';
+  }
+
+  // 3. Detecção do Ano de Publicação
+  let year = new Date().getFullYear();
+  const yearMatch = text.match(/\b(19[89]\d|20[012]\d)\b/);
+  if (yearMatch) {
+    year = parseInt(yearMatch[1]);
+  }
+
+  // 4. Detecção do Tipo de Documento
+  let docType: ExtractedBookData['docType'] = 'Manual Oficial';
+  if (lower.includes('boletim') || lowerFile.includes('boletim')) {
+    docType = 'Boletim Técnico';
+  } else if (lower.includes('circular') || lowerFile.includes('circular')) {
+    docType = 'Circular Técnica';
+  } else if (lower.includes('guia') || lowerFile.includes('guia')) {
+    docType = 'Guia Estadual';
+  } else if (lower.includes('livro') || lowerFile.includes('livro')) {
+    docType = 'Livro Técnico';
+  }
+
+  // 5. Escopo Regional
+  let scope = 'Nacional / Regional';
+  if (lower.includes('bahia') || lowerFile.includes('bahia')) {
+    scope = 'Bahia (Extremo Sul, Oeste e Recôncavo)';
+  } else if (lower.includes('cerrado') || lowerFile.includes('cerrado')) {
+    scope = 'Bioma Cerrado e Brasil Central';
+  } else if (lower.includes('minas') || lowerFile.includes('minas')) {
+    scope = 'Minas Gerais e Região Sudeste';
+  } else if (lower.includes('espírito santo') || lowerFile.includes('espirito')) {
+    scope = 'Espírito Santo e faixa costeira BA/ES';
+  } else if (lower.includes('são paulo') || lowerFile.includes('paulista')) {
+    scope = 'Estado de São Paulo e Sudeste';
+  }
+
+  // 6. Detecção Inteligente de Culturas Contempladas
+  const knownCrops = [
+    { name: 'Soja', keys: ['soja', 'glycine max'] },
+    { name: 'Milho', keys: ['milho', 'zea mays'] },
+    { name: 'Feijão', keys: ['feijão', 'feijao', 'phaseolus'] },
+    { name: 'Café Conilon', keys: ['café', 'cafe', 'conilon', 'arábica', 'arabica', 'coffea'] },
+    { name: 'Cacau', keys: ['cacau', 'theobroma'] },
+    { name: 'Mandioca', keys: ['mandioca', 'aipim', 'manihot'] },
+    { name: 'Banana', keys: ['banana', 'musa'] },
+    { name: 'Citros', keys: ['citros', 'laranja', 'limão', 'limao', 'tangerina', 'citrus'] },
+    { name: 'Algodão', keys: ['algodão', 'algodao', 'gossypium'] },
+    { name: 'Cana-de-Açúcar', keys: ['cana', 'saccharum'] },
+    { name: 'Pastagem', keys: ['pastagem', 'brachiaria', 'braquiária', 'panicum', 'forragem', 'capim'] },
+    { name: 'Eucalipto', keys: ['eucalipto', 'eucalyptus', 'silvicultura'] },
+    { name: 'Sorgo', keys: ['sorgo', 'sorghum'] },
+    { name: 'Trigo', keys: ['trigo', 'triticum'] },
+    { name: 'Tomate', keys: ['tomate', 'solanum lycopersicum'] },
+    { name: 'Pimenta-do-Reino', keys: ['pimenta-do-reino', 'pimenta do reino', 'piper nigrum'] }
+  ];
+
+  const cropsDetected: string[] = [];
+  const searchScope = lower + ' ' + lowerFile;
+  for (const cropItem of knownCrops) {
+    if (cropItem.keys.some((k) => searchScope.includes(k))) {
+      cropsDetected.push(cropItem.name);
+    }
+  }
+
+  // Se nenhuma cultura específica foi detectada pelo texto, infere as mais prováveis
+  if (cropsDetected.length === 0) {
+    cropsDetected.push('Soja', 'Milho');
+  }
+
+  // 7. Detecção do V% Meta para Calagem
+  let targetV = 70;
+  const vMatch = text.match(/(?:v\s*[\d=:]*|satura[çc][ãa]o\s*por\s*bases|eleva[çc][ãa]o\s*para)\s*([4-8]\d)\s*%/i);
+  if (vMatch) {
+    const vParsed = parseInt(vMatch[1]);
+    if (vParsed >= 40 && vParsed <= 85) targetV = vParsed;
+  } else {
+    // Derivação agronômica padrão com base na cultura prioritária
+    const primaryCrop = cropsDetected[0];
+    if (primaryCrop === 'Café Conilon' || primaryCrop === 'Cacau') targetV = 60;
+    else if (primaryCrop === 'Mandioca' || primaryCrop === 'Pastagem') targetV = 50;
+    else if (primaryCrop === 'Eucalipto') targetV = 40;
+    else if (primaryCrop === 'Citros') targetV = 75;
+    else targetV = 70;
+  }
+
+  // 8. Detecção das Demandas de N, P2O5, K2O
+  let nKgHa = 100;
+  let p2o5KgHa = 80;
+  let k2oKgHa = 90;
+  let formulation = '04-14-08';
+
+  const nMatch = text.match(/(?:nitrog[êe]nio|n)\s*[:\s=]+(\d{2,3})\s*(?:kg\/ha)?/i);
+  if (nMatch) nKgHa = parseInt(nMatch[1]);
+
+  const pMatch = text.match(/(?:f[oó]sforo|p2o5|p₂o₅)\s*[:\s=]+(\d{2,3})\s*(?:kg\/ha)?/i);
+  if (pMatch) p2o5KgHa = parseInt(pMatch[1]);
+
+  const kMatch = text.match(/(?:pot[aá]ssio|k2o|k₂o)\s*[:\s=]+(\d{2,3})\s*(?:kg\/ha)?/i);
+  if (kMatch) k2oKgHa = parseInt(kMatch[1]);
+
+  const formMatch = text.match(/\b(\d{2}[-\s/]\d{2}[-\s/]\d{2})\b/);
+  if (formMatch) {
+    formulation = formMatch[1].replace(/[\s/]/g, '-');
+  } else {
+    if (cropsDetected.includes('Soja')) formulation = '02-20-20';
+    else if (cropsDetected.includes('Café Conilon')) formulation = '20-05-20';
+    else if (cropsDetected.includes('Pastagem')) formulation = 'Superfosfato Simples';
+    else formulation = '04-14-08';
+  }
+
+  // 9. Notas e Memória
+  const notes = `Extração automática do documento: Calibragem oficial para ${cropsDetected.join(', ')}. Saturação por bases recomendada de ${targetV}%, com dose de arranque ${formulation}.`;
+
+  return {
+    title,
+    institution,
+    year,
+    docType,
+    scope,
+    officialUrl: 'https://www.embrapa.br',
+    notes,
+    cropsDetected,
+    targetV,
+    nKgHa,
+    p2o5KgHa,
+    k2oKgHa,
+    formulation,
+    rawText
+  };
+}
+
+

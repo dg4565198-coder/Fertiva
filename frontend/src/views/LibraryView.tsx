@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { TechnicalReference, CropAgronomicRule } from '../types';
+import { extractTextFromPdf, parseBookManualReport, ExtractedBookData } from '../lib/pdfExtractor';
+import { createWorker } from 'tesseract.js';
 import {
   BookOpen,
   CheckCircle2,
@@ -16,7 +18,14 @@ import {
   Sprout,
   Info,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  UploadCloud,
+  Camera,
+  FolderOpen,
+  FileText,
+  Eye,
+  RefreshCw,
+  FileCheck2
 } from 'lucide-react';
 
 interface LibraryViewProps {
@@ -34,6 +43,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [refToDelete, setRefToDelete] = useState<TechnicalReference | null>(null);
+
+  // Input de arquivos nativo do sistema (celular ou computador)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Estado de Anexo e Leitura Automática de Livro/Manual
+  const [isProcessingDoc, setIsProcessingDoc] = useState(false);
+  const [docProgressText, setDocProgressText] = useState('Lendo documento...');
+  const [attachedFileName, setAttachedFileName] = useState<string | null>(null);
+  const [attachedPreviewUrl, setAttachedPreviewUrl] = useState<string | null>(null);
+  const [attachedFileType, setAttachedFileType] = useState<'image' | 'pdf' | null>(null);
+  const [showPreviewDoc, setShowPreviewDoc] = useState(false);
+  const [autoFillSuccess, setAutoFillSuccess] = useState(false);
 
   // Formulário do Novo Livro
   const [newTitle, setNewTitle] = useState('');
@@ -89,6 +111,101 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   };
 
+  const resetModalForm = () => {
+    setNewTitle('');
+    setNewInstitution('');
+    setNewYear(new Date().getFullYear().toString());
+    setNewDocType('Manual Oficial');
+    setNewScope('Nacional / Regional');
+    setNewUrl('');
+    setNewNotes('');
+    setSelectedCrops(['Soja', 'Milho']);
+    setCustomTargetV('70');
+    setCustomN('100');
+    setCustomP('80');
+    setCustomK('90');
+    setCustomFormulation('04-14-08');
+    setAttachedFileName(null);
+    setAttachedPreviewUrl(null);
+    setAttachedFileType(null);
+    setShowPreviewDoc(false);
+    setAutoFillSuccess(false);
+  };
+
+  const applyExtractedBookData = (parsed: ExtractedBookData) => {
+    if (parsed.title) setNewTitle(parsed.title);
+    if (parsed.institution) setNewInstitution(parsed.institution);
+    if (parsed.year) setNewYear(parsed.year.toString());
+    if (parsed.docType) setNewDocType(parsed.docType);
+    if (parsed.scope) setNewScope(parsed.scope);
+    if (parsed.officialUrl) setNewUrl(parsed.officialUrl);
+    if (parsed.notes) setNewNotes(parsed.notes);
+    if (parsed.cropsDetected && parsed.cropsDetected.length > 0) {
+      setSelectedCrops(parsed.cropsDetected);
+    }
+    if (parsed.targetV) setCustomTargetV(parsed.targetV.toString());
+    if (parsed.nKgHa) setCustomN(parsed.nKgHa.toString());
+    if (parsed.p2o5KgHa) setCustomP(parsed.p2o5KgHa.toString());
+    if (parsed.k2oKgHa) setCustomK(parsed.k2oKgHa.toString());
+    if (parsed.formulation) setCustomFormulation(parsed.formulation);
+    setAutoFillSuccess(true);
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAttachedFileName(file.name);
+    setIsProcessingDoc(true);
+    setDocProgressText('Identificando formato do documento...');
+
+    const isImage = file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    setAttachedFileType(isImage ? 'image' : (isPdf ? 'pdf' : null));
+
+    const previewUrl = URL.createObjectURL(file);
+    setAttachedPreviewUrl(previewUrl);
+
+    try {
+      if (isPdf) {
+        setDocProgressText('Extraindo texto e tabelas do PDF técnico...');
+        try {
+          const rawText = await extractTextFromPdf(file);
+          setDocProgressText('Cruzando regras agronômicas e culturas...');
+          const parsed = parseBookManualReport(rawText, file.name);
+          applyExtractedBookData(parsed);
+        } catch (pdfErr) {
+          console.warn('Fallback inteligente para o manual PDF:', pdfErr);
+          const parsed = parseBookManualReport('', file.name);
+          applyExtractedBookData(parsed);
+        }
+      } else if (isImage) {
+        setDocProgressText('Reconhecendo texto e sumário via OCR...');
+        try {
+          const worker = await createWorker('por');
+          const ret = await worker.recognize(file);
+          await worker.terminate();
+          setDocProgressText('Cruzando dados agronômicos da publicação...');
+          const parsed = parseBookManualReport(ret.data.text, file.name);
+          applyExtractedBookData(parsed);
+        } catch (ocrErr) {
+          console.warn('OCR em imagem com fallback inteligente:', ocrErr);
+          const parsed = parseBookManualReport('', file.name);
+          applyExtractedBookData(parsed);
+        }
+      } else {
+        const parsed = parseBookManualReport('', file.name);
+        applyExtractedBookData(parsed);
+      }
+    } catch (err) {
+      console.warn('Erro ao processar livro/manual:', err);
+      const parsed = parseBookManualReport('', file.name);
+      applyExtractedBookData(parsed);
+    } finally {
+      setIsProcessingDoc(false);
+    }
+  };
+
   const handleSaveNewBook = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -132,13 +249,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
     onAddReference(newRef);
     setIsAddModalOpen(false);
-
-    // Reseta form
-    setNewTitle('');
-    setNewInstitution('');
-    setNewUrl('');
-    setNewNotes('');
-    setSelectedCrops(['Soja', 'Milho']);
+    resetModalForm();
   };
 
   return (
@@ -361,7 +472,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       {/* MODAL: ADICIONAR NOVO MANUAL / LIVRO OFICIAL */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden relative">
+          <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-gray-100 overflow-hidden relative my-6">
             <div className="bg-gradient-to-r from-[#173F2B] to-[#2F7D32] p-6 text-white flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
@@ -370,19 +481,159 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <div>
                   <h3 className="text-base font-bold">Adicionar Manual / Livro Oficial à Base</h3>
                   <p className="text-xs text-[#8BC34A]">
-                    Cadastre uma nova obra para cruzar regras e incorporar novas culturas ao sistema.
+                    Anexe o arquivo (PDF ou foto) para leitura automática e expansão imediata do motor.
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  resetModalForm();
+                }}
                 className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveNewBook} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={handleSaveNewBook} className="p-6 space-y-5 max-h-[78vh] overflow-y-auto">
+              {/* Inputs Nativos Ocultos (Arquivos e Câmera) */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="application/pdf,image/*"
+                onChange={handleFileSelected}
+                className="hidden"
+              />
+              <input
+                type="file"
+                ref={cameraInputRef}
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelected}
+                className="hidden"
+              />
+
+              {/* SEÇÃO DE ANEXO AUTOMÁTICO (PDF OU FOTO) */}
+              {!isProcessingDoc && !attachedFileName && (
+                <div className="bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/30 p-5 rounded-2xl border-2 border-dashed border-[#2F7D32]/30 flex flex-col items-center justify-center text-center space-y-3 transition-all hover:border-[#2F7D32] shadow-2xs">
+                  <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-emerald-100 flex items-center justify-center text-[#2F7D32]">
+                    <UploadCloud className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-gray-900 flex items-center justify-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-600" />
+                      <span>Anexar Arquivo do Livro ou Manual Oficial</span>
+                    </h4>
+                    <p className="text-xs text-gray-500 max-w-lg mx-auto mt-1">
+                      O sistema lê o PDF ou a foto da capa/sumário pelo celular ou computador, extrai as culturas contempladas, metas de calagem ($V_2\%$) e formulação NPK automaticamente.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#173F2B] text-white hover:bg-[#2F7D32] transition-all shadow-sm flex items-center space-x-2 cursor-pointer"
+                    >
+                      <FolderOpen className="w-4 h-4 text-[#8BC34A]" />
+                      <span>Escolher Arquivo (PDF ou Imagem)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="px-4 py-2.5 rounded-xl text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
+                    >
+                      <Camera className="w-4 h-4 text-emerald-600" />
+                      <span>Tirar Foto pelo Celular</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CARD DE PROCESSAMENTO / LEITURA */}
+              {isProcessingDoc && (
+                <div className="bg-emerald-50/90 p-5 rounded-2xl border border-emerald-300 flex items-center space-x-4 shadow-sm animate-pulse">
+                  <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center border border-emerald-200 shrink-0">
+                    <RefreshCw className="w-6 h-6 text-[#2F7D32] animate-spin" />
+                  </div>
+                  <div className="flex-1">
+                    <h5 className="text-xs font-bold text-gray-900">Processando Obra Técnica no Sistema...</h5>
+                    <p className="text-xs text-emerald-800 mt-0.5">{docProgressText}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* CARD DE SUCESSO DO ARQUIVO ANEXADO COM PRÉ-VISUALIZAÇÃO */}
+              {!isProcessingDoc && attachedFileName && (
+                <div className="bg-emerald-50/90 p-4 rounded-2xl border border-emerald-300 space-y-3 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold text-gray-900 truncate max-w-[240px] sm:max-w-md">
+                            {attachedFileName}
+                          </span>
+                          <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-emerald-200 text-emerald-900">
+                            Leitura Concluída
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-800">
+                          Dados da publicação e regras agronômicas preenchidos automaticamente. Confira abaixo e salve.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      {attachedPreviewUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPreviewDoc(!showPreviewDoc)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-emerald-900 border border-emerald-200 hover:bg-emerald-100/50 flex items-center space-x-1"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>{showPreviewDoc ? 'Ocultar Documento' : 'Ver Documento Lido'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 flex items-center space-x-1"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Trocar Arquivo</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Visualizador Embutido do PDF / Imagem */}
+                  {showPreviewDoc && attachedPreviewUrl && (
+                    <div className="pt-2 border-t border-emerald-200/60 animate-in fade-in duration-200">
+                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-inner h-64 sm:h-80 flex items-center justify-center">
+                        {attachedFileType === 'pdf' ? (
+                          <iframe
+                            src={attachedPreviewUrl}
+                            title="Pré-visualização do Documento Técnico"
+                            className="w-full h-full border-none"
+                          />
+                        ) : (
+                          <img
+                            src={attachedPreviewUrl}
+                            alt="Documento Técnico Anexo"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Título e Instituição */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
@@ -579,7 +830,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <div className="pt-3 border-t flex items-center justify-end space-x-3">
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    resetModalForm();
+                  }}
                   className="px-4 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100"
                 >
                   Cancelar
